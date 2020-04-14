@@ -1,0 +1,177 @@
+---
+title: "DO MetricsTable"
+author: "Alice Carter"
+date: "2/17/2020"
+output: html_document
+---
+# Script for calculating metrics about DO time series 
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(lubridate)
+```
+
+Read in data:
+- field concentrations of ions and GHG
+- GHG fluxes from gas buckets
+- Sediment Organic matter content
+- DO timeseries metrics (predictors)
+
+```{r loaddata}
+
+#load element and flux data from sites
+dat <- read.csv("data/FieldConcFluxes_NHCMC_20180702.csv", header=T, stringsAsFactors = F)
+dat$datetime <- mdy_hm(dat$datetime)
+
+# remove the MC3_upper site and rename lower as MC3, rearrange based on site
+dat <- dat[-4,]
+dat$site[3] <- "MC3"
+NHCsites2018 <- c('Mud','MC751','MC3','MC2','MC1','UNHC',
+                  'NHC','NHC5','NHC4','NHC3','NHC2','NHC1')
+dat$site <- factor(dat$site, levels = NHCsites2018)
+dat <-dat[order(dat$site),]
+
+# Remove high element concentrations below wwtp for correlations:
+dat[dat$site=="NHC1",9:12]<- NA
+
+#load DOmetric data:
+DOmetrics <- read.csv("data/DOtimeseriesMetrics.csv", header=T) #stringsAsFactors = F)
+
+#add YSI grab data to metrics:
+
+#Subset based on potential predictors:
+DOmetPreds <- DOmetrics %>% 
+  select(site,
+         DO_instantaneous.mgL = ysi.DO_mgL,
+         DO_daymean.mgL = meanday.DO_mgL,
+         DO_7daymean.mgL = mean7day.DO_mgL,
+         DO_23daymean.mgL = meanall.DO_mgL,
+         DO_daymin.mgL = minday.DO_mgL,
+         DO_7daymin.mgL = min7day.DO_mgL,
+         DO_23daymin.mgL = minall.DO_mgL,
+         DO_dayamp.mgL = ampday.DO_mgL,
+         DO_7dayamp.mgL = amp7day.DO_mgL,
+         DO_23dayamp.mgL = ampall.DO_mgL,
+         RBI_day = RBIday.DO_mgL,
+         RBI_7day = RBI7day.DO_mgL,
+         RBI_23day = RBIall.DO_mgL,
+         EOD.mgLday,
+         SOM.percent)
+
+variables <- dat %>%
+  select(site,
+         O2.mgL = DO.mgL.ysi,
+         SO4.mgl, NO3.N.mgL, NH4.N.mgL, Fe.mgL, S.ugL,
+         CH4.ugL, CO2.ugL, N2O.ugL,
+         flux.CH4.umolm2d, flux.CO2.umolm2d, flux.N2O.umolm2d)
+         
+```
+# Clean up response variable table - 
+ - scale variables so that units are comprable
+```{r}
+apply(variables[,2:13], 2, mean, na.rm=T)
+variables <- variables %>% 
+  mutate(NH4.N.ugL = 1000*NH4.N.mgL,
+         CO2.mgL = CO2.ugL/1000,
+         flux.CH4.mmolm2d = flux.CH4.umolm2d/1000,
+         flux.CO2.mmolm2d = flux.CO2.umolm2d/1000)%>%
+  select(-NH4.N.mgL, -CO2.ugL, -flux.CH4.mmolm2d, -flux.CO2.umolm2d)
+
+```
+
+# Regressions for predictor variables
+Function to plot all regressions
+```{r regression function}
+
+plotvars <- function(DOmetPreds, variable){
+ for(i in 2:ncol(DOmetPreds)){
+         plot(DOmetPreds[,i], variable, ylab = F, xlab = colnames(DOmetPreds)[i])
+         model <- lm(variable~DOmetPreds[,i])
+         par(new=T)
+         abline(model$coef[1], model$coef[2], lty=2)
+         text(min(DOmetPreds[,i],na.rm=T),min(variable, na.rm=T), adj=c(0,0),
+              labels = round(summary(model)$adj.r.squared,2))
+         }       
+}
+
+par(mfrow = c(3,5))
+plotvars(DOmetPreds, dat$CH4.ugL)
+```
+
+Generate table with regression coefficents
+
+```{r regression table}
+# generate a dataframe of predictors and their regression coeff and adjusted R2 values
+regressionTable <- data.frame()
+for(i in 2:ncol(DOmetPreds)){
+  p <- colnames(DOmetPreds)[i]
+  for(j in 2:ncol(variables)){
+    r <- colnames(variables)[j]
+    md <- lm(variables[,j]~DOmetPreds[,i])
+    slope <- md$coef[2]
+    r2 <- summary(md)$adj.r.squared
+    pval <- summary(md)$coefficients[2,4]
+    regressionTable <- rbind(regressionTable, 
+                             data.frame(predictor = p,response = r,
+                                        slope = slope,adj.r2=r2, pval = pval))
+  }
+}
+
+rownames(regressionTable) <- c()
+
+slopes <- spread(regressionTable[,1:3],response,slope)
+
+tmp.names <- "predictor"
+for(i in 2:13){
+  tmp.names <- c(tmp.names, paste(colnames(slopes)[i],"s",sep="."),
+                 paste(colnames(slopes)[i],"r2",sep="."))
+}
+ 
+colnames(slopes)[2:13] <-  paste(colnames(slopes)[2:13],"s",sep=".")
+
+r2 <- spread(regressionTable[,c(1,2,4)],response,adj.r2)
+colnames(r2)[2:13] <-  paste(colnames(r2)[2:13],"r2",sep=".")
+
+df<- full_join(slopes, r2, by = "predictor")
+df <- df[,tmp.names]
+
+```
+
+# Remove columns for variables with no significant predictors
+```{r}
+pvals <- spread(regressionTable[,c(1,2,5)],response,pval)
+
+## Find all of the variables with no significant predictors
+varnames <- colnames(pvals[,2:13])
+notsig <- vector()
+for(i in varnames){
+  if(all(pvals[,i]>0.05)){
+    notsig <- append(notsig, i)
+    }  
+}
+
+colnames(pvals)<- c("predictor", paste(colnames(pvals[,2:13]),'p',sep='.'))
+df <- full_join(df, pvals, by = "predictor")
+varnames<- colnames(df)
+w <- vector()
+for(i in notsig){
+  w <- append(grep(i, varnames),w)
+}
+df <- df %>%
+  select(-c(varnames[w]))
+
+df$pred.min <- apply(DOmetPreds[,2:16], 2, min, na.rm=T)
+df$pred.max <- apply(DOmetPreds[,2:16], 2, max, na.rm=T)
+
+
+write.csv(df, file = "data/regressionTable.csv", row.names = F)
+```
+
+
+
+# make a covariance matrix of the predictor variables
+```{r}
+PredCorr<- cor(DOmetPreds[,-1], use="complete.obs")
+write.csv(PredCorr, "data/PredictorCorrelationMatrix.csv", row.names = F)
+```
+

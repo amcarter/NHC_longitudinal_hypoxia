@@ -1,0 +1,237 @@
+---
+title: "NHD data expedition day"
+author: "Nick Bruns"
+date: "2/18/2020"
+output: html_document
+---
+
+
+Consult [these docs from this Download link](ftp://ftp.horizon-systems.com/NHDplus/NHDPlusV21/Documentation/NHDPlusV2_User_Guide.pdf) to understand NHD column values, their units etc.
+This is long, so just control-f on the information you need.
+
+[This map has all USGS gages](https://maps.waterdata.usgs.gov/mapper/index.html) 
+
+[This tool is nice for visualizing HUCs](http://waterqualityexplorer.rc.duke.edu:3838/explorer/) 
+
+
+
+
+
+```{r setup, include=FALSE}
+#install.packages("nhdplusTools") #uncomment and run!
+library(nhdplusTools)
+library(tidyverse)
+library(sf)
+library(tmap)
+tmap_mode("view") #makes map plots interactive
+```
+
+---
+
+
+```{r target_hucs}
+# USGS gage ID at NHC blands
+NHC_gage_id <- "02097314"
+NHC_sites <- read.csv("NC_synopticSamplingSites.csv", header=T, stringsAsFactors = F)
+
+sites_sf <- NHC_sites[c(1:5,8:11),1:3] %>% 
+  st_as_sf(coords=c("Long","Lat"),remove=F, crs=4326)
+
+site_MCconf <- NHC_sites[14,1:3] %>%
+  site_as_sf(coords=c("Long","Lat"), remove=F, crs=4326)
+
+```
+
+```{r code_demonstration}
+#First, we'll check how many machines work. So first, run this whole block, then we'll work through line by line.
+  cur_gage_id <- NHC_gage_id
+  cur_id_string<- paste0("USGS-",cur_gage_id) #just add prefix to string
+  cur_site <- list(featureSource = "nwissite",  #prepping below web quirie below, this just indicates the kind of data we have
+               featureID = cur_id_string) 
+  cur_line <- navigate_nldi(cur_site, "UT", "") #returns all upstream flowlines
+  cur_site_sf <- navigate_nldi(cur_site, "UT", "nwissite") #returns all upstream USGS gages
+  
+  #now map flowlines and gages
+  tm_shape(cur_line) + tm_lines() +
+    tm_shape(sites_sf) +tm_dots(col="red") 
+```
+```{r download_NHD_info}
+#Flowlines above are just the ID's . Download everything!
+save_file_name <- "NHC_NHD_subset.gpkg" #gkpg is an open source geospatial format
+subset_nhdplus(cur_line$nhdplus_comid, 
+                       save_file_name, 
+                       "download")
+cur_nhd <- st_read(save_file_name)
+glimpse(cur_nhd)
+```
+
+```{r download NHD_highRes}
+download_nhdplushr(nhd_dir = "download_dir", 
+                   hu_list = c("0101"), # can mix hu02 and hu04 codes.
+                   download_files = T) # TRUE will download files.
+
+
+out_gpkg <- file.path(work_dir, "nhd_hr.gpkg")
+hr_data <- get_nhdplushr(work_dir, 
+                         out_gpkg = out_gpkg)
+(layers <- st_layers(out_gpkg))
+
+names(hr_data)
+
+unlink(out_gpkg)
+
+hr_data <- get_nhdplushr(work_dir, 
+                         out_gpkg = out_gpkg, 
+                         layers = NULL)
+(layers <- st_layers(out_gpkg))
+
+names(hr_data)
+
+```
+
+
+```{r NHC_sites}
+NHC <- sites[sites$site=="NHC",1:3]%>%
+  st_as_sf(coords=c("Long","Lat"),remove=F, crs=4326)
+
+comid_points<- rep(NA, 9)
+for(i in 1:nrow(sites_sf)){
+comid_points[i]<- discover_nhdplus_id(sites_sf[i,])  
+}
+
+
+NHC_mainstem <- cur_nhd %>% 
+    filter(gnis_name=="Mud Creek" | gnis_name=="New Hope Creek"|comid==8888400)
+  
+tm_shape(NHC_mainstem) + tm_lines()
+
+UNHC_NHD <- NHC_mainstem %>%
+  filter(hydroseq > 250019295 &gnis_name=="New Hope Creek")
+UMC_NHD <- NHC_mainstem %>%
+  filter(hydroseq > 250087220 & gnis_name=="Mud Creek" )
+
+longitudinal_transect <- NHC_mainstem %>%
+  filter(!comid %in% UNHC_NHD$comid)%>%
+  filter(!comid %in% UMC_NHD$comid)
+
+sample_site_NHD_reaches <- tibble(comid=comid_points) %>%
+  left_join(longitudinal_transect)%>% st_as_sf()
+
+siteDat <- sample_site_NHD_reaches %>% 
+  select(comid, streamorde, pathlength, slope, totdasqkm )
+siteDat$site <- sites_sf$site
+
+slopes <- longitudinal_transect %>% 
+  select(comid, pathlength, minelevraw, slope)
+
+write.csv(slopes, file = "2018TransectSlopes.csv", row.names = F)
+write.csv(siteDat, file = "NHC_sensorsite_data.csv", row.names=F)
+
+tm_shape(sample_site_NHD_reaches) + tm_lines(col="totdasqkm",style = "cont")+
+  tm_shape(sites_sf)+ tm_dots()
+
+
+```
+
+
+
+
+
+```{r make_nhd_plot}
+cur_density <- sum(cur_nhd$lengthkm)/max(cur_nhd$totdasqkm) #network density metric
+print(cur_density)
+
+#plot elevation
+longitudinal_transect %>% 
+  # filter(pathlength>2100) %>% #Necessary for Yampa river
+  ggplot() + 
+  geom_line(aes(x=pathlength,y=slope,col=as.factor(streamorde)), lwd=2) +
+   xlab("km to outlet") +
+  ylab("slope") +
+  scale_color_viridis_d("stream order")
+```
+
+```{r wrap_all_above_code_into_functions}
+#great. That's it. Now we'll wrap all in functions for easier  use.
+plot_basin <- function(gage_id_string){
+  id_string=paste0("USGS-",gage_id_string) 
+  site <- list(featureSource = "nwissite", 
+                featureID = id_string)
+  print("getting site") 
+  discover_nldi_navigation(site)
+  print("getting flowline")  
+  line <- navigate_nldi(site, "UT", "") #returns all upstream comids
+  print("getting usptream sites")
+  site_sf <- navigate_nldi(site, "UT", "nwissite") #returns all upstream gages!
+  cur_plot <- tm_shape(line) + tm_lines() +
+    tm_shape(site_sf) +tm_dots(col="red") 
+  print(cur_plot)
+  return(line)
+}
+
+download_slim_nhd <- function(flow_line_with_comid,save_string){
+  subset_nhdplus(flow_line_with_comid$nhdplus_comid, 
+                       save_string, 
+                       "download")
+}
+
+plot_elevation <- function(cur_nhd,river_name){
+  cur_nhd %>% 
+  ggplot() + 
+  geom_line(aes(x=pathlength,y=minelevsmo,col=as.factor(streamorde))) +
+   xlab("km to outlet") +
+  ylab("elevation (cm)") +
+  theme_dark() + scale_color_viridis_d("stream order") +
+    ggtitle(river_name)
+}
+
+#Geomorphic Instantenous Unit Hydrograph
+plot_GIUH <- function(cur_nhd){
+  ggplot(cur_nhd) +
+    geom_point(aes(y=totdasqkm,x=pathlength,col=as.character(streamorde))) + scale_color_viridis_d("stream order") +
+    theme_dark() 
+}
+
+compute_network_density<- function(cur_nhd){ 
+  sum(cur_nhd$lengthkm)/max(cur_nhd$totdasqkm)
+}
+
+plot_stream_order <- function(cur_nhd,matching_pal=T) {
+  if(matching_pal){
+    cur_nhd %>% mutate(streamorde=as.factor(streamorde)) %>%  
+      tm_shape() + tm_lines(col="streamorde",lwd = 3,palette = "viridis")
+  } else{
+     cur_nhd %>% mutate(streamorde=as.factor(streamorde)) %>%  
+      tm_shape() + tm_lines(col="streamorde",lwd = 3)
+  }
+  
+}
+```
+```{r show_function_use_example}
+#setup: to try a different basin, 
+# insert new code chunk (cmd + option + i)
+# paste this code chunk
+# modify this top part with a new name and USGS gage id.
+cur_river_name <- "New_Hope_Creek"
+cur_gage_id <- New_Hope_Creek_gage_id #or directly put a quoted gage id here
+print(cur_gage_id)
+
+#run code
+cur_file_name <- paste0(cur_river_name,"_NHD_subset.gpkg")
+cur_flow_line <- plot_basin(cur_gage_id)
+download_slim_nhd(cur_flow_line,cur_file_name) #will fail if the file already exists
+cur_nhd <- st_read(cur_file_name) #load that NHD
+compute_network_density(cur_nhd)
+plot_elevation(cur_nhd,cur_river_name)
+plot_stream_order(cur_nhd )
+plot_GIUH(cur_nhd )
+```
+
+
+
+
+
+
+
+
+

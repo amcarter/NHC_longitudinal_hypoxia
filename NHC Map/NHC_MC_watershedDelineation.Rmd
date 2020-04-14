@@ -1,0 +1,83 @@
+---
+title: "Watershed Delineation"
+author: "Mark Hagemannr"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Vignette Title}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+```{r}
+# update and load packages
+# library(devtools)
+# install_github('markwh/streamstats')
+library(streamstats)
+library(dplyr)
+```
+
+Assuming you already have the lat-lon of an outlet, computing the contributing watershed is as easy as:
+
+```{r}
+sites <- read.csv("NC_synopticSamplingSites.csv", header=T)
+MCout <- sites[sites$site=="MCconf",2:3]
+NHCout <- sites[sites$site=="Blands",2:3]
+
+MC <- delineateWatershed(xlocation = MCout$Long, ylocation = MCout$Lat, crs = 4326, 
+                          includeparameters = "true", includeflowtypes = "true")
+NHC <- delineateWatershed(xlocation = NHCout$Long, ylocation = NHCout$Lat, crs = 4326, 
+                          includeparameters = "true", includeflowtypes = "true")
+
+```
+
+(if timeout is reached before a result is returned, you can specify it using `setTimeout([number of seconds])`)
+
+Here, `crs` is the coordinate reference system number (ESPSG spatial reference code). 
+
+To see what it returned, the `leafletWatershed` function gives a simple interactive map.
+
+```{r}
+leafletWatershed(MC)
+leafletWatershed(NHC)
+```
+
+Other statistics can be found using the `computeChars` (for watershed characteristics such as basin area and land-use) and `computeFlowStats` (for statistics such as flow percentiles)
+
+```{r}
+MCchars <- computeChars(workspaceID = MC$workspaceID, rcode = "NC")
+MCchars$parameters
+
+NHCchars <- computeChars(workspaceID = NHC$workspaceID, rcode = "NC")
+NHCchars$parameters
+
+WatershedChars <- MCchars$parameters %>% rename(MC=value)
+WatershedChars <- full_join(WatershedChars, NHCchars$parameters[,c(4,6)], by = "code") %>%
+  rename(NHC=value) %>% select(-ID)
+
+#Compute drainage area in km2
+xx <- WatershedChars[WatershedChars$code=="DRNAREA", c(5,6)]
+area <- data.frame(c("Drainage Area km2","Drainage area in km2", "", "square kilometers",  xx*(1.60934^2)), stringsAsFactors = F) 
+names(area) <- (colnames(WatershedChars))
+# Slope in m/km and percent
+xx <- WatershedChars[WatershedChars$code=="CSL10_85fm", c(5,6)]
+slopeper <- data.frame(c("Channel Slope Percent","10 to 85 channel slope in percent", "", "percent", xx*(100/5280)),stringsAsFactors = F)
+names(slopeper) <- (colnames(WatershedChars))
+slopemkm<- data.frame(c("Channel Slope m/km","10 to 85 channel slope in m per km", "", "m per km", xx*(12*2.54/100/1.60934)),stringsAsFactors = F)
+names(slopemkm) <- (colnames(WatershedChars))
+
+
+binddf = rbind(area,slopeper,slopemkm )
+WatershedChars <- rbind(WatershedChars, binddf)
+
+write.csv(WatershedChars, file = "NHCMCwatershed_characteristics.csv", row.names = FALSE)
+```
+
+```{r}
+NHCstats <- computeFlowStats(workspaceID = NHC$workspaceID, rcode = "NC")
+NHCstats$BANKFULL$flow
+
+MCstats <- computeFlowStats(workspaceID = MC$workspaceID, rcode = "NC")
+MCstats$BANKFULL$flow
+```
+
+
