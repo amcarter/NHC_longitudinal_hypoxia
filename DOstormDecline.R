@@ -12,11 +12,80 @@ NHCsites2018 <- c('Mud','MC751','MC3','MC2','MC1','UNHC',
 DOdat$DateTime_UTC <- ymd_hms(DOdat$DateTime_UTC)
 DOdat$DateTime <- with_tz(DOdat$DateTime_UTC, tz="EST")
 # The targeted storm occured on Jun 26:
+# Read in compiled DO data
+DOdat <- read.csv("data/raw/allSites_20180706.csv", header = T, stringsAsFactors = F)
+DOdat$DateTime_UTC <- ymd_hms(DOdat$DateTime_UTC)
+NHCsites2018 <- c("Mud","MC751","MC3","MC2","MC1","UNHC","NHC",
+                  "NHC5","NHC4","NHC3","NHC2","NHC1")
+startdate <- ymd_hms("2018-06-25 00:00:00 EST")
+enddate <- ymd_hms("2018-07-02 00:00:00 EST")
+#Convert to local time
+DOdat$DateTime <- with_tz(DOdat$DateTime_UTC, tzone="EST")
+DOdat$Date <- as.Date(DOdat$DateTime, tz="EST")
+DOdat$Hour <- hour(DOdat$DateTime)
 
-startdate <- ymd_hms("2018-06-26 13:00:00", tz="EST")
-enddate <- ymd_hms("2018-06-29 18:00:00", tz="EST")
-plot(DOdat[DOdat$site=="MC3",]$DateTime, DOdat[DOdat$site=="MC3",]$DO_mgL, 
-     xlim = c(startdate,enddate))
+# Set netagive DO values to zero. Do I need to refine this?
+w <-which(DOdat$DO_mgL<0)
+DOdat[w, c(3,7)] <- 0
+
+DOdat$site <- factor(DOdat$site, levels = NHCsites2018)
+DOdat <- DOdat[which(DOdat$DateTime>=startdate),]
+DOdat<- DOdat[which(DOdat$DateTime<=enddate),]
+DOdat.mintimes <- DOdat[which(DOdat$Hour %in% c(0,1,2,3,4,5,6)),]
+DOdat.mintimes <- DOdat.mintimes[which(DOdat.mintimes$Date >as.Date("2018-06-23")),]
+DOdatdaily<- DOdat %>% group_by(site, Date)%>%
+  summarize(mean.persatDO = mean(persatDO, na.rm=T),
+            sd.persatDO = sd(persatDO, na.rm=T),
+            max.persatDO = max(persatDO, na.rm=T),
+            time.max.persatDO = DateTime[which(persatDO==max(persatDO, na.rm=T))[1]])
+DOdatdaily.mintimes <- DOdat.mintimes %>% group_by(site,Date)%>%
+  summarize(min.persatDO = min(persatDO, na.rm=T), 
+            time.min.persatDO = DateTime[which(persatDO==min(persatDO, na.rm=T))[ceiling(length(which(persatDO==min(persatDO, na.rm=T)))/2)]])
+DOdatdaily <- full_join(DOdatdaily, DOdatdaily.mintimes, by = c("site","Date"))          
+
+
+
+
+png("figures/DOStormDecline.png", width=6.5, height=4, units="in", res=300)
+par(mfrow = c(3,4), cex = 1,
+    mar = c(0,0,0,0), oma = c(3,2.5,1.5,2.5))
+for(i in 1:12){
+  # dAmplitude/dtime
+  DO <- DOdatdaily[DOdatdaily$site==NHCsites2018[i]&DOdatdaily$Date %in% c(stormDate, stormDate+1, stormDate+2, 
+                                                                           stormDate+3, stormDate+4),]
+  DO$min.persatDO[DO$Date==stormDate] <- DO$max.persatDO[DO$Date==stormDate]
+  DO$time.min.persatDO[DO$Date==stormDate]<- DO$time.max.persatDO[DO$Date==stormDate]
+  m<- lm(100*min.persatDO~time.min.persatDO, data=DO)
+
+  ts <- DOdat$DateTime[DOdat$site==NHCsites2018[i]]
+  D <- 100*DOdat$persatDO[DOdat$site==NHCsites2018[i]]
+  plot(ts,D, xaxt='n', yaxt='n', type = 'l', ylim = c(0,120)) 
+  text(x= ymd_hms("2018-06-27 05:00:00"), y=110, labels=paste0(NHCsites2018[i]," ",-round(m$coef[2]*60*60*24),"% dDO/day"),
+       adj = c(.15,0), cex=.6)
+  points(DO$time.min.persatDO, 100*DO$min.persatDO, pch = 20,col = "brown3")
+  abline(m$coef[1], m$coef[2], col = "brown3", lty=2)
+
+
+  # Add axes
+  if(i %in% c(1,5,9)){
+    axis(2, at=c(0,50,100),col = "grey30", col.axis = "grey20", tck=-.05, labels=NA)
+    axis(2, at=c(0,50,100),col = "grey30",lwd = 0, line = -.6, cex.axis=.7)
+  }
+  
+  if(i %in% 9:12){
+    t <- seq(startdate+60*60*24*2, enddate-60*60*24,by = "2 days")
+    axis(side = 1, at = t, labels=FALSE) 
+    text(x = t, y = par("usr")[3]-3 , labels = format(t, "%m-%d"), 
+         pos = 1, xpd=NA, col = "grey30", cex=.7)
+    
+  }
+}
+mtext(text="Date",side=1,line=1.5,outer=TRUE)
+mtext(text="DO (%sat)",side=2,line=1.5,outer=TRUE)
+
+dev.off()
+
+
 
 DOsummarystats <- function(site, DOdat){
   daily <- DOdat[,c("date",paste0(site,".DO_mgL"))] %>% 

@@ -159,7 +159,7 @@ datdaily$mean.persatDO <- na.approx(datdaily$mean.persatDO)
 
 # Calculate exceedence curve for a site
 
-plot_exceedence <- function(tmp, col){
+plot_exceedence <- function(tmp, col="black", lty=1){
   tmp <- tmp[which(!is.na(tmp$mean.persatDO)),]
   tmp$mean.persatDO <- sort(tmp$mean.persatDO, decreasing=T)
   tmp$index <- seq(1:nrow(tmp))
@@ -227,11 +227,12 @@ plot(1,axes=F, type="n")
 # dygraph(NHC.dy)%>%dyRangeSelector()
 
 
-stormdates <- as.Date(c("2019-01-13","2019-01-24", "2019-02-18",
-                        "2019-02-24","2019-03-21","2019-04-13",
-                        "2019-04-20","2019-06-08","2019-07-23",
-                        "2019-08-05","2019-08-14","2019-10-20",
-                        "2019-12-01","2019-12-14"))
+stormdates <- as.Date(c("2019-01-13","2019-01-20","2019-01-24","2019-02-13",
+                        "2019-02-16","2019-02-18","2019-02-21","2019-02-24",
+                        "2019-03-21","2019-04-06","2019-04-09","2019-04-13",
+                        "2019-04-20","2019-06-08","2019-06-19","2019-07-23",
+                        "2019-08-05","2019-08-14","2019-10-20","2019-11-24",
+                        "2019-12-01","2019-12-14", "2019-12-24"))
 stormdates <- stormdates - 2
 endinterval <- stormdates+9
 
@@ -276,9 +277,10 @@ mtext(paste(letters[6], "   3 years", sep=" "), side = 3, line = -1.5, #how far 
       cex = 1, col = text.col)
 axis(1, col = bor.col, col.axis = text.col, at = seq(0,100, 20) )
 box(col = bor.col)
+legend("bottomleft", legend = c("2017","2018","2019"),cex=.7,bty="n", lty = c(1,2,3),col=alpha("black", .7), lwd=2)
 
 for(i in c(2017,2018,2019)){
-  plot_exceedence(datdaily[datdaily$year==i, "mean.persatDO"], alpha("black", 0.5))
+  plot_exceedence(datdaily[datdaily$year==i, "mean.persatDO"], col=alpha("black", .7),lty=i)
 }
 abline(h=50, lty=2, col=alpha("brown3",.5), lwd=2)
 abline(h=95, lty=2, col=alpha("darkblue",.5), lwd=2)
