@@ -27,6 +27,7 @@ MC <- delineateWatershed(xlocation = MCout$Long, ylocation = MCout$Lat, crs = 43
                           includeparameters = "true", includeflowtypes = "true")
 NHC <- delineateWatershed(xlocation = NHCout$Long, ylocation = NHCout$Lat, crs = 4326, 
                           includeparameters = "true", includeflowtypes = "true")
+saveRDS(NHC, "NHC_watershed_boundary.rds")
 
 ```
 

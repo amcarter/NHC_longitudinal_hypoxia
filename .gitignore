@@ -16,4 +16,8 @@
 *.shp
 *.geojson
 *.rdata
+*.svg
+*.zip
+*.eps
+*.ai
 MetricsTable_old.Rmd
