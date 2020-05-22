@@ -43,7 +43,14 @@ for(i in 1:length(NHCsites2018)){
     plot(ts,DO,xaxt="n",yaxt="n",xlab="", ylab="", type = 'l', ylim = c(0,120))
     
   }
-  text(x= ymd_hms("2018-06-29 00:00:00"), y=110, labels=NHCsites2018[i], adj = c(.15,0), cex=.9)
+  # plot storm date
+  abline(v=ymd_hms("2018-06-26 16:00:00"), col="grey60", lty=2)
+
+  if(NHCsites2018[i]=="MC751"){
+    text(x= ymd_hms("2018-06-29 00:00:00"), y=110, labels="MC4", adj = c(.15,0), cex=.9)
+  } else if(NHCsites2018[i]=="Mud"){
+    text(x= ymd_hms("2018-06-29 00:00:00"), y=110, labels="Mtrib", adj = c(.15,0), cex=.9)
+  } else text(x= ymd_hms("2018-06-29 00:00:00"), y=110, labels=NHCsites2018[i], adj = c(.15,0), cex=.9)
   startbox<- ymd_hms("2018-06-13 00:00:00")
   endbox <- ymd_hms("2018-06-22 00:00:00")
   boxlength <- endbox-startbox
@@ -60,7 +67,6 @@ for(i in 1:length(NHCsites2018)){
   x0 <- stats$prHypox0*boxlength
   x0 <- c(startbox, startbox+x0, startbox+x0, startbox)
   polygon(x=x0, y=y, col = "grey20")
-  
   # Add axes
   if(i %in% c(1,5,9)){
     axis(2, at=c(0,50,100),col = "grey30", col.axis = "grey20", tck=-.05, labels=NA)
@@ -79,7 +85,13 @@ mtext(text="Date",side=1,line=1.5,outer=TRUE)
 mtext(text="DO (%sat)",side=2,line=1.5,outer=TRUE)
 mtext(text="level (m)",side=4,line=1.5,outer=TRUE)
 par(new=T, mfrow = c(1,1), mar = c(0,0,0,0), oma = c(0,0,0,0))
-legend("top", legend=c("Water level ", "pr(DO% sat < 50)   ", "pr(DO% sat = 0)    "), cex=.8,
-       fill=c("slategray3", "grey80", "grey20"), border=c("slategray3","black","black"),ncol=3, xpd=NA, bty="n")
+
+legend("top", legend=c("Storm event", "Water level ", "pr(DO% sat < 50)   ", "pr(DO% sat = 0)    "), 
+       cex=.8, bty="n",ncol=4, xpd=NA,
+       col=c("grey50",NA,NA,NA),
+       lty=c(2,NA,NA,NA),
+       fill=c(NA,"slategray3", "grey80", "grey20"),
+       border=c(NA,"slategray3","black","black"),
+       x.intersp=c(1,.2,.2,.2))
 
 dev.off()

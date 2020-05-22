@@ -29,16 +29,16 @@ wwtp.discharge <- wwtp.permit/2
 
 NHCbaseflow <- quantile(dat$mean_va, 0.2) # baseflow defined as 20th percentile of flow. 
 NHCbaseflow2 <- baseflow_sep(dat$mean_va)
-NHCbaseflow2018 <- baseflow_sep(dat$mean_2018, method="RLSWM")#, parms=c(window_size=10, f_lowess=0.1))
+NHCbaseflow2018 <- baseflow_sep(dat$mean_2018)#, parms=c(window_size=10, f_lowess=0.1))
 
 plot(dat$mean_2018, type="l", log="y")
 lines(NHCbaseflow2018, col="red")
 wwtp.flow.contribution <- wwtp.discharge/NHCbaseflow2018[146]*100
-wwtp.fc.max <- wwtp.permit/min(NHCbaseflow2018, na.rm=T)*100
-wwtp.fc.min <- wwtp.discharge/max(NHCbaseflow2018, na.rm=T)*100
+wwtp.fc.max <- wwtp.discharge/(min(dat$mean_va, na.rm=T))*100
+wwtp.fc.min <- wwtp.discharge/(wwtp.discharge+max(NHCbaseflow2018, na.rm=T))*100
+quantile(dat$mean_va, .5, na.rm = T)
 
-
-#####################################################
+ #####################################################
 
 dat.ext <- rbind(dat[364:366,],dat,dat[1:3,])
 dat <- data.frame(apply(dat, 2, na.fill, fill="extend"))
