@@ -1,301 +1,145 @@
 #####################
-# Calculate DO slopes post storm
-# A Carter 2020 Jan 28
+# Functions to calculate DO metrics
+#   Storm identification - coming soon
+#   Storm events:
+#     slopes of minima
+#     slopes of amplitudes
+#   Annual:
+#     DO undersaturation curves
+#     Day:night hypox ratio
+
+# A Carter 2020 05 22
 
 library(lubridate)
+library(dplyr)
+library(readr)
+library(streamMetabolizer)
 
-# Read in DO data and daily site summarys:
-DOSiteSummary <- read.csv("data/DailyDOsummary.csv", header=T)
-DOdat <- read.csv("data/raw/allSites_20180706.csv", header = T, stringsAsFactors = F)
-NHCsites2018 <- c('Mud','MC751','MC3','MC2','MC1','UNHC',
-                  'NHC','NHC5','NHC4','NHC3','NHC2','NHC1')
-DOdat$DateTime_UTC <- ymd_hms(DOdat$DateTime_UTC)
-DOdat$DateTime <- with_tz(DOdat$DateTime_UTC, tz="EST")
-# The targeted storm occured on Jun 26:
-# Read in compiled DO data
-DOdat <- read.csv("data/raw/allSites_20180706.csv", header = T, stringsAsFactors = F)
-DOdat$DateTime_UTC <- ymd_hms(DOdat$DateTime_UTC)
-NHCsites2018 <- c("Mud","MC751","MC3","MC2","MC1","UNHC","NHC",
-                  "NHC5","NHC4","NHC3","NHC2","NHC1")
-startdate <- ymd_hms("2018-06-25 00:00:00 EST")
-enddate <- ymd_hms("2018-07-02 00:00:00 EST")
-#Convert to local time
-DOdat$DateTime <- with_tz(DOdat$DateTime_UTC, tzone="EST")
-DOdat$Date <- as.Date(DOdat$DateTime, tz="EST")
-DOdat$Hour <- hour(DOdat$DateTime)
+dat <- read_csv("data/raw/NHCdat.csv")
+sites <- read.csv("NHC_map/NC_synopticSamplingSites.csv", header=T, stringsAsFactors = F)
 
-# Set netagive DO values to zero. Do I need to refine this?
-w <-which(DOdat$DO_mgL<0)
-DOdat[w, c(3,7)] <- 0
-
-DOdat$site <- factor(DOdat$site, levels = NHCsites2018)
-DOdat <- DOdat[which(DOdat$DateTime>=startdate),]
-DOdat<- DOdat[which(DOdat$DateTime<=enddate),]
-DOdat.mintimes <- DOdat[which(DOdat$Hour %in% c(0,1,2,3,4,5,6)),]
-DOdat.mintimes <- DOdat.mintimes[which(DOdat.mintimes$Date >as.Date("2018-06-23")),]
-DOdatdaily<- DOdat %>% group_by(site, Date)%>%
-  summarize(mean.persatDO = mean(persatDO, na.rm=T),
-            sd.persatDO = sd(persatDO, na.rm=T),
-            max.persatDO = max(persatDO, na.rm=T),
-            time.max.persatDO = DateTime[which(persatDO==max(persatDO, na.rm=T))[1]])
-DOdatdaily.mintimes <- DOdat.mintimes %>% group_by(site,Date)%>%
-  summarize(min.persatDO = min(persatDO, na.rm=T), 
-            time.min.persatDO = DateTime[which(persatDO==min(persatDO, na.rm=T))[ceiling(length(which(persatDO==min(persatDO, na.rm=T)))/2)]])
-DOdatdaily <- full_join(DOdatdaily, DOdatdaily.mintimes, by = c("site","Date"))          
+plot(dat$DateTime_UTC, dat$discharge_cms, log="y")
+stormdate <- as.Date("2018-06-26")
+DO <- dat$DO_mgL
+dt <- dat$DateTime_UTC
+local_dt <- with_tz(dt, tz="EST")
 
 
+###########################################################################
+# Slope of mins and maxes and amplitude recovery after a storm
 
-
-png("figures/DOStormDecline.png", width=6.5, height=4, units="in", res=300)
-par(mfrow = c(3,4), cex = 1,
-    mar = c(0,0,0,0), oma = c(3,2.5,1.5,2.5))
-for(i in 1:12){
-  # dAmplitude/dtime
-  DO <- DOdatdaily[DOdatdaily$site==NHCsites2018[i]&DOdatdaily$Date %in% c(stormDate, stormDate+1, stormDate+2, 
-                                                                           stormDate+3, stormDate+4),]
-  DO$min.persatDO[DO$Date==stormDate] <- DO$max.persatDO[DO$Date==stormDate]
-  DO$time.min.persatDO[DO$Date==stormDate]<- DO$time.max.persatDO[DO$Date==stormDate]
-  m<- lm(100*min.persatDO~time.min.persatDO, data=DO)
-
-  ts <- DOdat$DateTime[DOdat$site==NHCsites2018[i]]
-  D <- 100*DOdat$persatDO[DOdat$site==NHCsites2018[i]]
-  plot(ts,D, xaxt='n', yaxt='n', type = 'l', ylim = c(0,120)) 
-  text(x= ymd_hms("2018-06-27 05:00:00"), y=110, labels=paste0(NHCsites2018[i]," ",-round(m$coef[2]*60*60*24),"% dDO/day"),
-       adj = c(.15,0), cex=.6)
-  points(DO$time.min.persatDO, 100*DO$min.persatDO, pch = 20,col = "brown3")
-  abline(m$coef[1], m$coef[2], col = "brown3", lty=2)
-
-
-  # Add axes
-  if(i %in% c(1,5,9)){
-    axis(2, at=c(0,50,100),col = "grey30", col.axis = "grey20", tck=-.05, labels=NA)
-    axis(2, at=c(0,50,100),col = "grey30",lwd = 0, line = -.6, cex.axis=.7)
-  }
-  
-  if(i %in% 9:12){
-    t <- seq(startdate+60*60*24*2, enddate-60*60*24,by = "2 days")
-    axis(side = 1, at = t, labels=FALSE) 
-    text(x = t, y = par("usr")[3]-3 , labels = format(t, "%m-%d"), 
-         pos = 1, xpd=NA, col = "grey30", cex=.7)
-    
-  }
-}
-mtext(text="Date",side=1,line=1.5,outer=TRUE)
-mtext(text="DO (%sat)",side=2,line=1.5,outer=TRUE)
-
-dev.off()
-
-
-
-DOsummarystats <- function(site, DOdat){
-  daily <- DOdat[,c("date",paste0(site,".DO_mgL"))] %>% 
-    rename("DO"=paste0(site,".DO_mgL"))%>%
-    group_by(date) %>%                  
-    summarize(mean =mean(DO,na.rm = T),
-              min = min(DO, na.rm = T),
-              max = max(DO,na.rm = T),
-              amp = (max-min))
-}
-# Gather DO slope points by selecting the storm peak 
-# then the min for each of the three days following
-
-
-
-dat <- DOdat[,c("site","DateTime", "DO_mgL")]
-dat<- dat[-(which(dat$DateTime<startdate)),]
-dat<- dat[-(which(dat$DateTime>enddate)),]
-
-dat$site <- factor(dat$site, levels = NHCsites2018)
-timesteps <- c(startdate, seq(ymd_hms("2018-06-26 18:00:00", tz="EST"),
-                                enddate, by = "days"))
-dat_group <- dat %>% 
-  mutate(fac=cut(DateTime, timesteps, labels=letters[1:4]))
-
-dat_points<- data.frame() 
-
-for(i in 1:length(NHCsites2018)){
-  site <- NHCsites2018[i]
-  datsite <- dat_group[dat_group$site==site,]
-  tmp <- datsite[datsite$fac==letters[1],]
-  DO <-  max(tmp$DO_mgL, na.rm=T) 
-  DateTime <- tmp$DateTime[which.max(tmp$DO_mgL)]
-  dat_points <- dplyr::bind_rows(dat_points, data.frame(site=site, DO_mgL=DO, DateTime=DateTime))
-  for(j in 2:4){
-    tmp <- datsite[datsite$fac==letters[j],]
-    DO <- min(tmp$DO_mgL, na.rm=T) 
-    DateTime <- tmp$DateTime[which.min(tmp$DO_mgL)]
-    dat_points <- dplyr::bind_rows(dat_points, data.frame(site=site, DO_mgL=DO, DateTime=DateTime))
-  }
-}
-
-
-plot(DOdat[DOdat$site=="MC3",]$DateTime, DOdat[DOdat$site=="MC3",]$DO_mgL, 
-     xlim = c(startdate,enddate))
-
-#Calculate slope of decline for each site, save as EOD:
-EOD <- data.frame()
-for(i in 1:length(NHCsites2018)){
-  site <- NHCsites2018[i]
-  model <- lm(dat_points[dat_points$site==site,]$DO_mgL~dat_points[dat_points$site==site,]$DateTime)
-  resp <- -model$coef[2]*60*60*24
-  EOD <- dplyr::bind_rows(EOD, data.frame(site=site, EOD.mgLday=resp))
-}
-
-# Add this column to the DO statistics file:
-
-DOmetrics <- read.csv("data/DOtimeseriesMetrics.csv", header=T)
-DOmetrics <- full_join(DOmetrics, EOD, by = "site")
-
-write.csv(DOmetrics, file = "data/DOtimeseriesMetrics.csv", row.names = F)
-
-
-PlotDOdeclinefit <- function(site,DOdat, declines){
-    plot(DOdat[DOdat$site==site,]$DateTime, DOdat[DOdat$site==site,]$DO_mgL,
-       xlim = c(startdate,enddate), ylim = c(0,10), 
-       type="l", lwd = 1.5, xaxt="n", yaxt="n")
-    points(declines[declines$site==site,]$DateTime, declines[declines$site==site,]$DO_mgL,
-                    col = "red", pch = 20, cex = 1.2)
-    model <- lm(declines[declines$site==site,]$DO_mgL~declines[declines$site==site,]$DateTime)
-    par(new=T)
-    abline(model$coef[1], model$coef[2], lty=2, col = "red")
-    resp <- -model$coef[2]*60*60*24
-    text((startdate+20000), 10, adj=c(0,1), labels = site)
-    text((startdate+120000), 10, adj=c(0,1), labels = paste0(round(resp, 1), " mg/L/d O2"))
-}
-
-par(mfrow = c(3,4), cex = 1,
-    mar = c(0,0,0,0), oma = c(3,3,.5,.5))
-
-for(i in 1:length(NHCsites2018)){
-  PlotDOdeclinefit(NHCsites2018[i], DOdat, dat_points)
-  if(i %in% c(1,5,9)){ axis(2)}
-  if(i %in% c(9,10,11,12)){
-    axis(1, lab=c("6-27", "6-28","6-29"), 
-         at=seq(ymd_hms("2018-06-27 00:00:00"), by="day", length.out=3))
-    }
-}
-
-
-
-PlotDOdeclinefit("MC751", DOdat, dat_points)    
-axis(2)  
-PlotDOdeclinefit("MC3", MC3)    
-PlotDOdeclinefit("MC2", MC2)    
-PlotDOdeclinefit("MC1", MC1)
-axis(2)
-PlotDOdeclinefit("NHC5", NHC5)    
-PlotDOdeclinefit("NHC4", NHC4)    
-PlotDOdeclinefit("NHC3", NHC3)
-axis(2)
-PlotDOdeclinefit("NHC2", NHC2)    
-PlotDOdeclinefit("NHC1", NHC1)    
-
-
-
-
-dat <- DOdat[,c("date","DateTime_UTC", paste0(NHCsites2018[i],".DO_mgL"))] %>% 
-  rename("DO"=paste0(NHCsites2018[i],".DO_mgL"))
-  tmp <- dat%>% filter(date==date("2018-06-26"))
-  MC751 <- tmp[which.max(tmp$DO),]
-  tmp <- dat%>% filter(date==date("2018-06-27"))
-  MC751 <- rbind(MC751, tmp[which.min(tmp$DO),])
-  tmp <- dat%>% filter(date==date("2018-06-28"))
-  MC751 <- rbind(MC751, tmp[which.min(tmp$DO),])
-  tmp <- dat%>% filter(date==date("2018-06-29"))
-  MC751 <- rbind(MC751, tmp[which.min(tmp$DO),])
-  
-  dat <- DOdat[,c("date","DateTime_UTC", paste0(NHCsites2018[2],".DO_mgL"))] %>% 
-  rename("DO"=paste0(NHCsites2018[2],".DO_mgL"))
-  tmp <- dat%>% filter(date==date("2018-06-26"))
-  MC3 <- tmp[which.max(tmp$DO),]
-  tmp <- dat%>% filter(date==date("2018-06-27"))
-  MC3 <- rbind(MC3, tmp[which.min(tmp$DO),])
-  tmp <- dat%>% filter(date==date("2018-06-28"))
-  MC3 <- rbind(MC3, tmp[which.min(tmp$DO),])
-  tmp <- dat%>% filter(date==date("2018-06-29"))
-  MC3 <- rbind(MC3, tmp[which.min(tmp$DO),])
+calc_DO_storm_recovery<- function(local_dt,DO, stormdate,minwin=0:6, maxwin=9:19, rec_days=5){
+  dat<- data.frame(dt = local_dt,                  
+                   DO=DO,                    
+                   date=as.Date(floor_date(local_dt, "days")),
+                   hour=hour(local_dt))
+  xlims <- c(stormdate-2, stormdate+6)
+  tz <- attr(local_dt, "tzone")
+  xlims <- as.POSIXct(paste(as.character(xlims),"00:00:00",sep=" "), tz=tz)
+  dat<- dat[dat$dt<xlims[2]&dat$dt>=xlims[1],]
   
   
-  dat <- DOdat[,c("date","DateTime_UTC", paste0(NHCsites2018[4],".DO_mgL"))] %>% 
-    rename("DO"=paste0(NHCsites2018[4],".DO_mgL"))
-  tmp <- dat%>% filter(date==date("2018-06-26"))
-  MC1 <- tmp[which.max(tmp$DO),]
-  tmp <- dat%>% filter(date==date("2018-06-27"))
-  MC1 <- rbind(MC1, tmp[which.min(tmp$DO),])
-  tmp <- dat%>% filter(date==date("2018-06-28"))
-  MC1 <- rbind(MC1, tmp[which.min(tmp$DO),])
-  tmp <- dat%>% filter(date==date("2018-06-29"))
-  MC1 <- rbind(MC1, tmp[which.min(tmp$DO),])
+  #Calculate post storm peak
+  peak_DO <- max(dat$DO[dat$date == stormdate], na.rm=T)
+  peak_time <- dat[dat$date == stormdate,]$dt[
+    which(dat$DO[dat$date == stormdate]==peak_DO)][1]
  
-   dat <- DOdat[,c("date","DateTime_UTC", paste0(NHCsites2018[3],".DO_mgL"))] %>% 
-    rename("DO"=paste0(NHCsites2018[3],".DO_mgL"))
-  tmp <- dat%>% filter(date==date("2018-06-26"))
-  MC2 <- tmp[which.max(tmp$DO),]
-  tmp <- dat%>% filter(date==date("2018-06-27"))
-  MC2 <- rbind(MC2, tmp[which.min(tmp$DO),])
-  tmp <- dat%>% filter(date==date("2018-06-28"))
-  MC2 <- rbind(MC2, tmp[which.min(tmp$DO),])
-  tmp <- dat%>% filter(date==date("2018-06-29"))
-  MC2 <- rbind(MC2, tmp[which.min(tmp$DO),])
+  # data frame of mins and maxes:
+  datmin <- dat[dat$hour %in% minwin,]
+  datmax <- dat[dat$hour %in% maxwin,]
+ 
+  daily<- data.frame(date=stormdate, min_time=peak_time, min_DO=peak_DO, max_time=peak_time, max_DO=peak_DO)
+  days <- unique(dat$date)
+  for(i in 1:length(days)){
+    tmp <-  datmin[datmin$date==days[i],]
+    min_DO <- min(tmp$DO, na.rm=T)
+    min_time <- tmp$dt[which(tmp$DO==min_DO)][ceiling(length(which(tmp$DO==min_DO))/2)] # find the middle time point of mins
   
-  dat <- DOdat[,c("date","DateTime_UTC", paste0(NHCsites2018[5],".DO_mgL"))] %>% 
-    rename("DO"=paste0(NHCsites2018[5],".DO_mgL"))
-  tmp <- dat%>% filter(date==date("2018-06-26"))
-  NHC5 <- tmp[which.max(tmp$DO),]
-  tmp <- dat%>% filter(date==date("2018-06-27"))
-  NHC5 <- rbind(NHC5, tmp[which.min(tmp$DO),])
-  tmp <- dat%>% filter(date==date("2018-06-28"))
-  NHC5 <- rbind(NHC5, tmp[which.min(tmp$DO),])
-  tmp <- dat%>% filter(date==date("2018-06-29"))
-  NHC5 <- rbind(NHC5, tmp[which.min(tmp$DO),])
+    tmp <-  datmax[datmax$date==days[i],]
+    max_DO <- max(tmp$DO, na.rm=T)
+    max_time <- tmp$dt[which(tmp$DO==max_DO)][ceiling(length(which(tmp$DO==max_DO))/2)] 
   
+    newrow <- data.frame(date=days[i], min_time=min_time, min_DO=min_DO, 
+                         max_time=max_time, max_DO=max_DO)
+    daily<- bind_rows(daily, newrow)
+  }
+ 
+  daily$amp <- daily$max_DO-daily$min_DO
   
-  dat <- DOdat[,c("date","DateTime_UTC", paste0(NHCsites2018[6],".DO_mgL"))] %>% 
-    rename("DO"=paste0(NHCsites2018[6],".DO_mgL"))
-  tmp <- dat%>% filter(date==date("2018-06-26"))
-  NHC4 <- tmp[which.max(tmp$DO),]
-  tmp <- dat%>% filter(date==date("2018-06-27"))
-  NHC4 <- rbind(NHC4, tmp[which.min(tmp$DO),])
-  tmp <- dat%>% filter(date==date("2018-06-28"))
-  NHC4 <- rbind(NHC4, tmp[which.min(tmp$DO),])
-  tmp <- dat%>% filter(date==date("2018-06-29"))
-  NHC4 <- rbind(NHC4, tmp[which.min(tmp$DO),])
+  # remove mins and maxes before the peak
+  preamp <- daily$amp[daily$date==stormdate-1]
+  daily<- daily[-which(daily$max_time<peak_time),]
+  w<- which(daily$min_time<peak_time)
+  if(length(w)!=0){
+    daily<- daily[-w,]
+  }
+  daily<- daily[1:(rec_days+1),]
+  # if(nrow(daily)<6){
+  #   stop("not enough days to calculate metric, need 5 days post storm")}
+  
+  minm<- lm(min_DO~min_time, data=daily)
+  maxm<- lm(max_DO~max_time, data=daily)
+  min_slope<- minm$coefficients[2]
+  min_int<- minm$coefficients[1]
+  max_slope<- maxm$coefficients[2]
+  max_int<- maxm$coefficients[1]
+  min_r2<-summary(minm)$adj
+  max_r2<-summary(maxm)$adj
+  dDO.day_min <- min_slope*60*60*24 # convert to dDO/day
+  dDO.day_max <- max_slope*60*60*24 # convert to dDO/day
+  
+  plot(dat$dt, dat$DO, col="grey40", type="l",lwd=1.2,
+       xaxt="n",yaxt="n",xlab="",ylab="",ylim = c(0,120))
+  abline(min_int,min_slope, lwd=2, lty=2, col="grey60")
+  abline(min_int,min_slope, lwd=2, lty=2, col=alpha("brown3",.6))
+  abline(max_int,max_slope, lwd=2, lty=2, col="grey60")
+  abline(max_int,max_slope, lwd=2, lty=2, col=alpha("steelblue", alpha=.6))
+  points(daily$min_time, daily$min_DO, col="brown3", pch=19)
+  points(daily$max_time, daily$max_DO, col="steelblue", pch=19)
+  points(daily$max_time[1], daily$max_DO[1], pch=19)
+ 
+  # mtext(paste0("min r2 = ",round(min_r2,2),
+  #              "    max r2 = ",round(max_r2,2)),1, -2)
+  params <- data.frame(dDO.day_min=dDO.day_min,
+                       dDO.day_max=dDO.day_max,
+                       pre_amplitude=preamp,
+                       amp_recovery_percent.day=-(dDO.day_min-dDO.day_max)/preamp*100,
+                       r2.adj_min=min_r2,
+                       r2.adj_max=max_r2)
+  
+  DOfit <- list(dat=dat, daily=daily,params=params)
+  return(DOfit)
+}
 
-  
-  dat <- DOdat[,c("date","DateTime_UTC", paste0(NHCsites2018[7],".DO_mgL"))] %>% 
-    rename("DO"=paste0(NHCsites2018[7],".DO_mgL"))
-  tmp <- dat%>% filter(date==date("2018-06-26"))
-  NHC3 <- tmp[which.max(tmp$DO),]
-  tmp <- dat%>% filter(date==date("2018-06-27"))
-  NHC3 <- rbind(NHC3, tmp[which.min(tmp$DO),])
-  tmp <- dat%>% filter(date==date("2018-06-28"))
-  NHC3 <- rbind(NHC3, tmp[which.min(tmp$DO),])
-  tmp <- dat%>% filter(date==date("2018-06-29"))
-  NHC3 <- rbind(NHC3, tmp[which.min(tmp$DO),])
-  
-  dat <- DOdat[,c("date","DateTime_UTC", paste0(NHCsites2018[8],".DO_mgL"))] %>% 
-    rename("DO"=paste0(NHCsites2018[8],".DO_mgL"))
-  tmp <- dat%>% filter(date==date("2018-06-26"))
-  NHC2 <- tmp[which.max(tmp$DO),]
-  tmp <- dat%>% filter(date==date("2018-06-27"))
-  NHC2 <- rbind(NHC2, tmp[which.min(tmp$DO),])
-  tmp <- dat%>% filter(date==date("2018-06-28"))
-  NHC2 <- rbind(NHC2, tmp[which.min(tmp$DO),])
-  tmp <- dat%>% filter(date==date("2018-06-29"))
-  NHC2 <- rbind(NHC2, tmp[which.min(tmp$DO),])
-  
-  dat <- DOdat[,c("date","DateTime_UTC", paste0(NHCsites2018[9],".DO_mgL"))] %>% 
-    rename("DO"=paste0(NHCsites2018[9],".DO_mgL"))
-  tmp <- dat%>% filter(date==date("2018-06-26"))
-  NHC1 <- tmp[which.max(tmp$DO),]
-  tmp <- dat%>% filter(date==date("2018-06-27"))
-  NHC1 <- rbind(NHC1, tmp[which.min(tmp$DO),])
-  tmp <- dat%>% filter(date==date("2018-06-28"))
-  NHC1 <- rbind(NHC1, tmp[which.min(tmp$DO),])
-  tmp <- dat%>% filter(date==date("2018-06-29"))
-  NHC1 <- rbind(NHC1, tmp[which.min(tmp$DO),])
-  
-  
-  sdat <- NHC1
+calc_DO_storm_recovery(local_dt, DO, stormdate=as.Date("2018-07-24"), rec_days=5)
 
-    
+calc_night_hypoxia<- function(UTC_dt, DO, threshold=.5, lat, long){
+  dat<- data.frame(dt = UTC_dt,
+                   DO = DO)
+  dat$solar_time <- convert_UTC_to_solartime(UTC_dt, long, "apparent solar")
+  dat$insolation <- calc_solar_insolation(dat$solar_time, lat)
+  dat$light<- 1
+  dat$light[dat$insolation==0]<- 0
+  dat$hypox<-0
+  dat$hypox[dat$DO<=threshold]<-1
+  dat<- dat[!is.na(dat$DO),]
+  
+  ts_length <-nrow(dat)/96 
+  per_hypox <- sum(dat$hypox)/nrow(dat)
+  per_night_hypox <- sum(dat$hypox[dat$light==0])/nrow(dat[dat$light==0,])
+  per_day_hypox <- sum(dat$hypox[dat$light==1])/nrow(dat[dat$light==1,])
+  
+  tmp<- dat[dat$hypox==1,]
+  fraction_night_hypoxia <- 1-sum(tmp$light)/nrow(tmp)
+  
+  plot(dat$solar_time, dat$DO, type="l")
+  abline(v=dat$dt[dat$light==0], col=alpha("black",.02))
+  abline(h=threshold, lty=2, col="red")
+  out <- data.frame(ts_days=ts_length, 
+                    per_hypox=per_hypox, 
+                    per_night_hypox=per_night_hypox,
+                    per_day_hypox=per_day_hypox,
+                    fraction_night_hypoxia=fraction_night_hypoxia, 
+                    hypoxia_threshold=threshold)
+  return(out)
+  }
