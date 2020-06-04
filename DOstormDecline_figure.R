@@ -6,6 +6,9 @@
 
 library(lubridate)
 library(dplyr)
+library(scales)
+library(latex2exp)
+source("DO_metrics_fns.R")
 
 setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_longitudinal_hypoxia/Code and Figs")
 # Read in DO data and daily site summarys:
@@ -15,6 +18,9 @@ NHCsites2018 <- c('Mud','MC751','MC3','MC2','MC1','UNHC',
                   'NHC','NHC5','NHC4','NHC3','NHC2','NHC1')
 DOdat$DateTime_UTC <- ymd_hms(DOdat$DateTime_UTC)
 DOdat$DateTime <- with_tz(DOdat$DateTime_UTC, tz="EST")
+
+# site coordinates
+sites <- read_csv("NHC_map/NC_synopticSamplingSites.csv")
 # The targeted storm occured on Jun 26:
 stormdate <- as.Date("2018-06-26")
 startdate <- ymd_hms("2018-06-25 00:00:00 EST")
@@ -27,40 +33,56 @@ DOdat[w, c(3,7)] <- 0
 
 DOdat$site <- factor(DOdat$site, levels = NHCsites2018)
 
-png("figures/DOStormTrajectories.png", width=6.5, height=4, units="in", res=300)
-par(mfrow=c(3,4), mar=c(0,0,0,0), oma=c(5,5,2,2))
+png("figures/DOStormTrajectories.png", width=8.125, height=5, units="in", res=300)
+par(mfrow=c(3,4), mar=c(0,0,0,0), oma=c(5,5,4,2))
 for(i in 1:12){
     minwin=0:6
     maxwin=9:19
-    rec_days=5
+    rec_days=5; d.4=F
   if(NHCsites2018[i]=="Mud"){
     minwin=c(17,18,19,20,21,22,23,0)
     maxwin=5:16
   }
   if(NHCsites2018[i] %in% c("MC2","MC3", "NHC", "NHC3")){
     rec_days=4
+    d.4=T
   }  
   tmp<- DOdat[DOdat$site==NHCsites2018[i],]
   
   a<- calc_DO_storm_recovery(tmp$DateTime, tmp$persatDO*100, stormdate, minwin, maxwin, rec_days)
-  mtext(paste0(tmp$site[1], "     dmin/day = ",round(-a$params$dDO.day_min,0), "%   "),
-        side=3,line=-1.1, adj=1, cex=.5 )
-  mtext(paste0("damp/day = ", round(a$params$amp_recovery_percent.day, 0), "%   "), 
-        side=3, line=-1.9, adj=1, cex=.5)
+  ss <- tmp$site[1]
+  if(ss=="MC751"){ss<- "MC4"}
+  if(ss=="Mud"){ss<-"Mtrib"}
+  mtext(ss,side=3, line=-1.5, cex=.7, adj=.36, font=2)
+  mtext(paste0('dmin/day = ',round(-a$params$dDO.day_min, 0), "%" ),
+        side=3,line=-1.4, adj=.95, cex=.6, font=4)
+  mtext(paste0("damp/day = ", round(a$params$amp_recovery_percent.day, 0), "%"), 
+        side=3, line=-2.3, adj=.95, cex=.6, font=4)
   if(i %in% c(1,5,9)){
     axis(2, at=c(0,50,100),col = "grey30", col.axis = "grey20", tck=-.05, labels=NA)
-    axis(2, at=c(0,50,100),col = "grey30",lwd = 0, line = -.6, cex.axis=.7)
+    axis(2, at=c(0,50,100),col = "grey30",lwd = 0, line = -.6, cex=.8)
   }
   
   if(i %in% 9:12){
     t <- seq(startdate+60*60*24*2, enddate-60*60*24,by = "2 days")
     axis(side = 1, at = t, labels=FALSE) 
     text(x = t, y = par("usr")[3]-3 , labels = format(t, "%m-%d"), 
-         pos = 1, xpd=NA, col = "grey30", cex=.7)
+         pos = 1, xpd=NA, col = "grey30", cex.lab=.8)
   }
-  mtext(text="Date",side=1,line=1.5,outer=TRUE)
-  mtext(text="DO (%sat)",side=2,line=1.5,outer=TRUE)
 }
+  mtext(text="Date",side=1,line=2,outer=TRUE)
+  mtext(text="DO (%sat)",side=2,line=1.8,outer=TRUE)
+  par(new=T, mfrow = c(1,1), mar = c(0,0,1,0), oma = c(0,0,1,0))
+  
+  legend("top", legend=c("DO (%sat)    ","Fit line","Storm peak   ", "daily min ", "daily max"), 
+         cex=.8, bty="n",ncol=5, xpd=NA, 
+         pt.cex=c(1.2,1.4,1.4,1.2,1.2),
+         col=c("grey50","grey50","black","brown3","steelblue"),
+         lty=c(1,2,NA,NA,NA),
+         pch=c(NA,NA,20,20,20),
+         x.intersp=.2)
+         
+
 
 dev.off()
 
@@ -69,13 +91,24 @@ dev.off()
 # fraction night hypoxia
 
 par(mfrow=c(3,4), mar=c(0,0,0,0), oma=c(5,5,2,2))
+
+night_prob <- data.frame(site=NHCsites2018,
+                         nfrac_2mgL=rep(NA,12),
+                         nfrac_50per=rep(NA, 12))
 for(i in 1:12){
   tmp<- DOdat[DOdat$site==NHCsites2018[i],]
+  a<- calc_night_hypoxia(tmp$DateTime_UTC, tmp$DO_mgL, 2, 
+                         lat=sites$Lat[sites$site==NHCsites2018[2]],
+                         long=sites$Long[sites$site==NHCsites2018[2]])
+  night_prob$nfrac_2mgL[i]<-a$prob_night_given_hypoxia
   a<- calc_night_hypoxia(tmp$DateTime_UTC, tmp$persatDO, .5, 
                          lat=sites$Lat[sites$site==NHCsites2018[2]],
                          long=sites$Long[sites$site==NHCsites2018[2]])
-  mtext(paste0(NHCsites2018[i]," ",round(100*a$per_night_hypox,0),"% night   ",round(100*a$per_day_hypox,0),"% day"),1,-1.5)
+  night_prob$nfrac_50per[i]<-a$prob_night_given_hypoxia
+  
 }
+i=1
+
 
 
 

@@ -11,6 +11,8 @@ library(dplyr)
 library(streamMetabolizer)
 library(zoo)
 
+setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_longitudinal_hypoxia/Code and Figs")
+
 # Read in compiled DO data
 DOdat <- read.csv("data/raw/allSites_20180706.csv", header = T, stringsAsFactors = F)
 DOdat$DateTime_UTC <- ymd_hms(DOdat$DateTime_UTC)
@@ -32,10 +34,10 @@ DOdat[w, c(3,7)] <- 0
 
 DOdat$site <- factor(DOdat$site, levels = NHCsites2018)
 
-YSIdat <- read_csv("data/FieldConcFluxes_NHCMC_20180702.csv")%>%
-  select(site, SOM = SedOrgM.per, ysi.DO_mgL = DO.mgL.ysi, ysi.persatDO = DO.persat.ysi)
-YSIdat <- YSIdat[-4,]
-YSIdat$site[3] <- "MC3"
+# YSIdat <- read_csv("data/FieldConcFluxes_NHCMC_20180702.csv")%>%
+#   select(site, SOM = SedOrgM.per, ysi.DO_mgL = DO.mgL.ysi, ysi.persatDO = DO.persat.ysi)
+# YSIdat <- YSIdat[-4,]
+# YSIdat$site[3] <- "MC3"
 # # Create a dataframe with only the 9-5 observations
 # 
 # w <- c(which(hour(DOdat$DateTime) %in% 9:16),

@@ -18,7 +18,6 @@ library(streamMetabolizer)
 dat <- read_csv("data/raw/NHCdat.csv")
 sites <- read.csv("NHC_map/NC_synopticSamplingSites.csv", header=T, stringsAsFactors = F)
 
-plot(dat$DateTime_UTC, dat$discharge_cms, log="y")
 stormdate <- as.Date("2018-06-26")
 DO <- dat$DO_mgL
 dt <- dat$DateTime_UTC
@@ -89,21 +88,21 @@ calc_DO_storm_recovery<- function(local_dt,DO, stormdate,minwin=0:6, maxwin=9:19
   dDO.day_max <- max_slope*60*60*24 # convert to dDO/day
   
   plot(dat$dt, dat$DO, col="grey40", type="l",lwd=1.2,
-       xaxt="n",yaxt="n",xlab="",ylab="",ylim = c(0,120))
-  abline(min_int,min_slope, lwd=2, lty=2, col="grey60")
+       xaxt="n",yaxt="n",xlab="",ylab="",ylim = c(0,130))
+  abline(min_int,min_slope, lwd=2, lty=2, col="grey50")
   abline(min_int,min_slope, lwd=2, lty=2, col=alpha("brown3",.6))
-  abline(max_int,max_slope, lwd=2, lty=2, col="grey60")
+  abline(max_int,max_slope, lwd=2, lty=2, col="grey50")
   abline(max_int,max_slope, lwd=2, lty=2, col=alpha("steelblue", alpha=.6))
   points(daily$min_time, daily$min_DO, col="brown3", pch=19)
   points(daily$max_time, daily$max_DO, col="steelblue", pch=19)
-  points(daily$max_time[1], daily$max_DO[1], pch=19)
+  points(daily$max_time[1], daily$max_DO[1], pch=19, cex=1.2)
  
   # mtext(paste0("min r2 = ",round(min_r2,2),
   #              "    max r2 = ",round(max_r2,2)),1, -2)
   params <- data.frame(dDO.day_min=dDO.day_min,
                        dDO.day_max=dDO.day_max,
                        pre_amplitude=preamp,
-                       amp_recovery_percent.day=-(dDO.day_min-dDO.day_max)/preamp*100,
+                       amp_recovery_percent.day=-(dDO.day_min-dDO.day_max),
                        r2.adj_min=min_r2,
                        r2.adj_max=max_r2)
   
@@ -111,7 +110,7 @@ calc_DO_storm_recovery<- function(local_dt,DO, stormdate,minwin=0:6, maxwin=9:19
   return(DOfit)
 }
 
-calc_DO_storm_recovery(local_dt, DO, stormdate=as.Date("2018-07-24"), rec_days=5)
+
 
 calc_night_hypoxia<- function(UTC_dt, DO, threshold=.5, lat, long){
   dat<- data.frame(dt = UTC_dt,
@@ -132,14 +131,16 @@ calc_night_hypoxia<- function(UTC_dt, DO, threshold=.5, lat, long){
   tmp<- dat[dat$hypox==1,]
   fraction_night_hypoxia <- 1-sum(tmp$light)/nrow(tmp)
   
-  plot(dat$solar_time, dat$DO, type="l")
-  abline(v=dat$dt[dat$light==0], col=alpha("black",.02))
-  abline(h=threshold, lty=2, col="red")
+  prob_night_given_hypoxia <- per_night_hypox/per_day_hypox
+  
+  # plot(dat$solar_time, dat$DO, type="l", ylim = c(0,1.2))
+  # abline(v=dat$dt[dat$light==0], col=alpha("black",.01))
+  # abline(h=threshold, lty=2, col="red")
   out <- data.frame(ts_days=ts_length, 
                     per_hypox=per_hypox, 
                     per_night_hypox=per_night_hypox,
                     per_day_hypox=per_day_hypox,
-                    fraction_night_hypoxia=fraction_night_hypoxia, 
+                    prob_night_given_hypoxia=prob_night_given_hypoxia, 
                     hypoxia_threshold=threshold)
   return(out)
   }
