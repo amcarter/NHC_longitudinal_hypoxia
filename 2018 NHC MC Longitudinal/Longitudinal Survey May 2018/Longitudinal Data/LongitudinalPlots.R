@@ -11,7 +11,7 @@ library(lubridate)
 #library(RColorBrewer)
 #library(SDMTools)
 library(dplyr)
-library(plotfunctions)
+library(zoo)
 
 # Load Longitudinal summary datafile
 # Called CompiledLongitudinalSamples_May2018.csv, it is a sheet in 2018May_AliceNetworkSampling.xlsx
@@ -49,34 +49,96 @@ roads <- filter(dat, Road.Crossing == 1) %>% select(distance_m)
 wwtp <- filter(dat, WWTP ==1) %>% select(distance_m)
 snsrs <- filter(dat, !is.na(SampleStation)) %>% select( SampleStation, distance_m, DO_mgL, DO_pctsat)
 
+# prep nutrient data
+dat.ions <- dat %>% select(datetime, distance_m, SampleStation, WWTP, DO_pctsat, DO_mgL, SpC_uScm, Cl.mgL, NO3.N.mgL, NH4.N.mgL, SO4.mgL)
+dat.ions <- dat.ions[order(dat.ions$distance_m),]
+dat.ions$distance_m <- dat.ions$distance_m/1000
+dat.upper<- dat.ions[which(!is.na(dat.ions$Cl.mgL)),]
+dat.upper<- rbind(dat.ions[1,], dat.upper)
+w <- which(dat.upper$distance_m >= wwtp$distance_m/1000)
+dat.lower<- dat.upper[w,]
+dat.upper[w,8:11]<- NA
 
-  png(file="LongitudinalDOplot.png", width=6.5, height=2.6, units="in", type="cairo", res=300)
+dat.sum <- colMeans(dat.lower[,c(2,9,10,11)], na.rm=T)
+
+
+png(file="LongDOChemplot2.png", width=8, height=4.8, units="in", type="cairo", res=300)
   
-  par(mar =c(4,5,2,4), mgp=c(2,1,0))
+  par(mar =c(0,0,0,5), mgp=c(2,1,0), oma=c(6,4,1,0), mfrow = c(2,1))
   
   
-  plot(dat$distance_m/1000, dat$DO_pctsat, pch = 21,cex=0.7,yaxt="n",cex.axis =.7,cex.lab=.9,
-       ylab = "DO (% sat)", xlab = "Kilometers downstream", ylim = c(0,120))
-  axis(2, at=c(0,25,50,75,100), cex.lab=.9,cex.axis =.7)
+  plot(dat$distance_m/1000, dat$DO_pctsat, pch = 21,cex=0.7,yaxt="n",xaxt="n", ylim = c(0,140))
+  axis(2, at=c(0,25,50,75,100), cex.lab=.9,cex.axis =.9)
   polygon(x = c(-2,30,30,-2),y = c(-10,-10,50,50), col = "grey90", border = NA )
   #polygon(x = c(-2,30,30,-2),y = c(-2,-2,3,3), col = "grey70", border = NA )
   #abline(v = roads$distance_m/1000, col =' black',lwd = 1.5, cex = 4, lty = 2)
-  abline(v=wwtp$distance_m/1000, col = colors[5], lwd = 2, lty = 1)
+  abline(v=wwtp$distance_m/1000, col = "steelblue", lwd = 2, lty = 1)
   par(new="T")
-  plot(dat$distance_m/1000, dat$DO_pctsat, ylim = c(0,120),cex=0.7,pch = 21, bg = dat$color,xaxt='n', yaxt='n', ann=F)
+  plot(dat$distance_m/1000, dat$DO_pctsat, ylim = c(0,140),cex=0.7,pch = 21, bg = dat$color,xaxt='n', yaxt='n', ann=F)
   points(snsrs$distance_m/1000, snsrs$DO_pctsat, pch = 20, cex = 1.5, col = colors[5])
-  text(x=wwtp$distance_m/1000, y=3, labels="WWTP", pos=4, offset=0.4, cex=.8)
+  #text(x=wwtp$distance_m/1000, y=3, labels="WWTP", pos=4, offset=0.4, cex=.8)
   
   gradientLegend(valRange=c(0,1),
-                 color = rbPal(10), pos = c(21.5, 5,22.2,115), side = 4,length = 0.5, depth = 0.03, inside = FALSE, 
+                 color = rbPal(10), pos = c(21.5, 5,22.2,135), side = 4,length = 0.5, depth = 0.03, inside = FALSE, 
                  coords = TRUE, pos.num = NULL, n.seg =0, border.col = "black", dec = NULL,
                  fit.margin = FALSE)
   text(x=22.2, y=7, labels="7:00", pos=4, offset=0.2, xpd=NA, cex=.7)
-  text(x=22.2, y=111, labels="19:00", pos=4, offset=0.1, xpd=NA, cex=.7)
-  mtext(text = "sample time", side=4, line=1, outer=FALSE, cex=.7)
+  text(x=22.2, y=131, labels="19:00", pos=4, offset=0.1, xpd=NA, cex=.7)
+  mtext(text = "sample time", side=4, line=1.5, outer=FALSE, cex=.7)
+  mtext("DO (%sat)", 2, line=2)
+  legend(0,140, legend=c("DO (%sat)    ","sensor  ","WWTP", "hypoxic"), 
+         cex=.8, bty="n",ncol=4, xpd=NA, 
+         pt.cex=c(.8,1),
+         border=NA,
+         col=c("black",colors[5],"steelblue",NA),
+         lty=c(NA,NA,1,NA),
+         pch=c(1,19,NA,NA),
+         fill=c(NA,NA,NA,"grey90"))
   
-  dev.off()
+  
+  ################################################################################
+  # Nutrient Concentrations normalized to Cl and relative to mean
+  
+  DO.col <-rbPal(3)[2]
+  NH4.col <- 3
+  NO3.col <- 2
+  SO4.col <-1
+  
+  plot(dat.upper$distance_m, dat.upper$SO4.mgL, type="l", lty=SO4.col, lwd=2,
+       xlim= c(0,max(dat.upper$distance_m)), ylim = c(0,10), xlab="", ylab="", xaxt="n", yaxt="n")
+  polygon(c(dat.upper$distance_m, rev(dat.upper$distance_m)), na.approx(c(dat.upper$DO_pctsat/20, rep(0, nrow(dat.upper)))),
+          border=F, col = alpha(DO.col,.4))
+  lines(dat.upper$distance_m, dat.upper$NO3.N.mgL, lwd=2,lty=NO3.col)
+  axis(2, at=c(0,2,4,6,8), cex.lab=.9,cex.axis =.9)
+  mtext("NO3-N, SO4, (mg/L)", side=2, line=2)
+  
+  text(19.2, 4.5, "NH4 = 0.05 mg/L",  cex=.8, pos=1)
+  text(19.2, 5.5, "NO3 = 29 mg/L", cex=.8, pos=1)
+  text(19.2, 6.5, "SO4 = 61 mg/L", cex=.8, pos=1)
+  text(19.2, 9, "mean concentration\nbelow WWTP", cex=.7)
+  
+  par(new=T)
+  
+  plot(dat.upper$distance_m, dat.upper$NH4.N.mgL, type="l", lwd=2, lty =NH4.col,
+       xaxt="n", yaxt="n", ylab="", xlab="", ylim = c(0,.2))
+  axis(4, at=c(0,.06,.12,.18), cex.lab=.9,cex.axis =.9)
+  
+  abline(v=wwtp$distance_m/1000, col="steelblue", lwd=2)
+  mtext("NH4-N, (mg/L)", side=4, line=2)
+  axis(1, at=c(0,4,8,12,16,20), cex.lab=.9)
+  mtext("Distance downstream (km)", side=1, line=2)
+  legend(0,.2, legend=c("DO (%sat)","SO4","NO3-N", "NH4-N"), 
+         cex=.8, bty="n",ncol=4, xpd=NA, 
+         pt.cex=1.2,
+         fill =c(DO.col,NA,NA,NA),
+         border=NA,
+         col=c("white","black","black","black"),
+         lty=c(NA,1,2,3))
+  
 
+    
+  dev.off()
+##################################################################################
 # Plot Nutrient Data
 # Full Nutrient Concentration data
 
@@ -84,16 +146,16 @@ par(mar = c(4,4,1,1), oma = c(1,1,0,0))
 
 cols <- c("orange", "purple", "darkred", "black")
 plot(dat$distance_m/1000, dat$SO4.mgL, pch = 20,
-      ylab = "concentration (mg/L)", xlab = "Kilometers downstream")
-w2 <- which(dat$DO_mgL<2)
-w5 <- which(dat$DO_mgL<5)
+      ylab = "concentration (mg/L)", xlab = "Kilometers downstream", log="y")
+# w2 <- which(dat$DO_mgL<2)
+# w5 <- which(dat$DO_mgL<5)
 
-abline(v=dat$distance_m[w5]/1000, col = "grey90", lwd = 3)
-abline(v=dat$distance_m[w2]/1000, col = "grey60", lwd = 3)
+# abline(v=dat$distance_m[w5]/1000, col = "grey90", lwd = 3)
+# abline(v=dat$distance_m[w2]/1000, col = "grey60", lwd = 3)
 par(new=T)
 
 plot(dat$distance_m/1000, dat$SO4.mgL, pch = 20, col = cols[2], cex=1.2,
-     xaxt="n", yaxt="n",ann=F)
+     xaxt="n", yaxt="n",ann=F, ylim = c(.1, 55),log="y")
 
 points(dat$distance_m/1000, dat$NO3.N.mgL, pch = 20, col = cols[1], cex=1.2)
 points(dat$distance_m/1000, dat$NH4.N.mgL, col =cols[3], pch = 20, cex=1.2)
@@ -102,7 +164,32 @@ legend("topleft", c("NO3", "SO4","NH4", "Cl"), pch=c(20,20,20,20), col = cols, b
 
 
 
-# Nutrient Concentrations relative to mean, excluding points below the wwtp
+dat.norm <- dat.upper%>% select(distance_m, 
+                          NO3Clnorm=NO3.N.mgL, 
+                          NH4norm=NH4.N.mgL, Cl.mgL, 
+                          SO4norm=SO4.mgL, DO_pctsat)
+dat.norm$NO3Clnorm <- dat.norm$NO3Clnorm/dat.norm$Cl.mgL
+dat.norm$NO3Clnorm <- dat.norm$NO3Clnorm/mean(dat.norm$NO3Clnorm, na.rm=T)
+
+dat.norm$NH4norm <- dat.norm$NH4norm/dat.norm$Cl.mgL
+dat.norm$NH4norm <- dat.norm$NH4norm/mean(dat.norm$NH4norm, na.rm=T)
+dat.norm$SO4norm <- dat.norm$SO4norm/dat.norm$Cl.mgL
+dat.norm$SO4norm <- dat.norm$SO4norm/mean(dat.norm$SO4norm, na.rm=T)
+
+
+dat.norm$Cl.mgL <- dat.norm$Cl.mgL/mean(dat.norm$Cl.mgL, na.rm=T)
+dat.norm <- dat.norm[which(!is.na(dat.norm$Cl.mgL)),]
+dat.norm <- dat.norm[order(dat.norm$distance_m),]
+ylims <- c(0.1,5)
+plot(dat.norm$distance_m, dat.norm$NO3Clnorm, type="l",ylim=c(0,2), xlim = c(1000,16200))#, log="y")
+lines(dat.norm$distance_m, dat.norm$SO4norm, col=2)
+lines(dat.norm$distance_m, dat.norm$NO3Clnorm, col=3)
+lines(dat.norm$distance_m, dat.norm$NH4norm, col=4)
+polygon(c(dat.norm$distance_m, rev(dat.norm$distance_m)), 
+        na.approx(c(dat.norm$DO_pctsat/50, rep(0,nrow(dat.norm)))),
+        col = alpha(1, .3), border=F)
+#################################################################################
+# relative to mean, excluding points below the wwtp
 # Remove data below the wwtp
 dat.ions <- dat %>% select(datetime, distance_m, SampleStation, WWTP, DO_pctsat, DO_mgL, SpC_uScm, Cl.mgL, NO3.N.mgL, NH4.N.mgL, SO4.mgL)
 w <- which(dat$distance_m >= wwtp$distance_m)

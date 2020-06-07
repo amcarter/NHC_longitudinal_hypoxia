@@ -38,6 +38,7 @@ source("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/Code/Tools/timeseries_tools.
 # site_code is a combination of regionID and siteID
 
 SPsites <- c("Mud","MC751","UNHC","NHC")
+sites <- read.csv("NHC_map/NC_synopticSamplingSites.csv", header=T, stringsAsFactors = F)
 # Create Dataframe for site data - for now do this by generating the df for the first site
 #  and renaming it, then use a loop to fill the rest.
 
@@ -49,26 +50,28 @@ SPsites <- c("Mud","MC751","UNHC","NHC")
  end_date <- ymd_hms("2020-01-01 05:00:00 UTC")
 
 # Pull Air Pressure data from NHC core site
-airP <- request_data(sitecode="NC_NHC", variables = "AirPres_kPa",
-                    startdate=start_date, enddate=end_date)$data %>%
-  spread(key = "variable", value="value") %>% select(c("DateTime_UTC", "AirPres_kPa"))
+airP <- request_data(sitecode="NC_NHC", variables = "AirPres_kPa")$data 
+airP$value[airP$flagtype=="Bad Data"|airP$flagtype=="Questionable"]<-NA
+airP<- airP %>%
+  spread(key = "variable", value="value") %>% 
+  dplyr::select(c("DateTime_UTC", "AirPres_kPa"))
 
 # Use this to convert water pressure data to water level data using sensor offset data:
 # Note, as of 11/10/2019 this is a fake dataset that needs to be updated based on the field notes
-sensorOffsets <- read.csv("data/raW/sensorOffsets.csv", header=T)
+sensorOffsets <- read.csv("data/sensorOffsets.csv", header=T)
 
 # List of all the variables I might want from a given site:
 variables <- c("DO_mgL", "satDO_mgL","Level_m",  "WaterPres_kPa", "WaterTemp_C")
 
-getSPdata <- function(site, start_date, end_date, variables, airP, sensorOffsets){
+getSPdata <- function(site, variables, airP, sensorOffsets){
   site_code <- paste('NC',site,sep='_')
-  dat <- request_data(site_code, start_date, end_date, variables)
+  dat <- request_data(site_code,  variables=variables)
   # remove bad data
     w <- which(dat$data$flagtype== "Bad Data" | dat$data$flagtype=="Questionable")
     dat$data$value[w]<-NA
   dat<- dat$data[,c(1,4,5)]%>% spread(key = "variable",value = "value")
   # attach air pressure data to calculate percent sat and depth
-  dat <- full_join(airP, dat, by = "DateTime_UTC")
+  dat <- left_join(dat, airP,by = "DateTime_UTC")
 
   # Use function from Stream Metabolizer to calculate percent saturation
   if(!("satDO_mgL" %in% colnames(dat))){
@@ -91,14 +94,126 @@ getSPdata <- function(site, start_date, end_date, variables, airP, sensorOffsets
 alldat <- data.frame()
 
 for(site in SPsites){
-  dat <- getSPdata(site, start_date, end_date, variables, airP, sensorOffsets)
+  dat <- getSPdata(site,  variables, airP, sensorOffsets)
   write.csv(dat, file = paste0("data/raw/",site,".csv"),row.names = F)
   dat$site <- rep(site, nrow(dat))
   alldat <- bind_rows(alldat, dat)
 }
+w<- which(alldat$DO_mgL<=-500)
+alldat[w,2]<- NA
+alldat <- alldat[which(alldat$DateTime_UTC>=ymd_hms("2016-01-01 00:00:00")),]
+
+alldat$DO_mgL[!is.na(alldat$DO_mgL)&alldat$DO_mgL<0]<- 0
+alldat$persatDO[!is.na(alldat$persatDO)&alldat$persatDO<0]<- 0
+
+
+airpressure_NOAA <- find_airP_AMC(35,-78,start_datetime=ymd_hms("2019-01-01 00:00:00"),end_datetime=ymd_hms("2019-01-02 00:30:00") )[1,]
+airpressure_NOAA$site=NA
+
+for(site in SPsites){
+  lat <- sites$Lat
+  long <- sites$Long
+  start_datetime <- min(alldat$DateTime_UTC[alldat$site==site], na.rm=T)
+  end_datetime <- max(alldat$DateTime_UTC[alldat$site==site], na.rm=T)
+  NOAA<- find_airP_AMC(lat, long, start_datetime, end_datetime)
+  NOAA$site <- site
+  airpressure_NOAA<- rbind(airpressure_NOAA, NOAA)
+}
+alldat <- left_join(alldat, airpressure_NOAA, by=c("site","DateTime_UTC"))
+alldat$AirPres_kPa[is.na(alldat$AirPres_kPa)]<- 1.005*alldat$air_kPa[is.na(alldat$AirPres_kPa)]-1.212
+
+alldat <- alldat[,-c(10,11)]
+alldat$satDO_mgL <- calc_DO_sat(alldat$WaterTemp_C, alldat$AirPres_kPa*10)
+alldat$persatDO <- alldat$DO_mgL/alldat$satDO_mgL
 
 
 write.csv(alldat, file = "data/raw/2019SPsites.csv", row.names = F)
+
+
+
+find_airP_AMC<- function (lat, long, start_datetime, end_datetime) 
+{
+  tf = tempfile()
+  download.file("ftp://ftp.ncdc.noaa.gov/pub/data/noaa/isd-history.txt", 
+                tf, mode = "wb")
+  noaa.sites <- read.fwf(tf, skip = 22, header = F, widths = c(6, 
+                                                               -1, 5, -45, 8, 9, -8, 9, 8), comment.char = "", col.names = c("USAF", 
+                                                                                                                             "WBAN", "LAT", "LON", "BEGIN", "END"), flush = TRUE, 
+                         colClasses = c(USAF = "character", WBAN = "character"))
+  noaa.sites <- na.omit(noaa.sites)
+  noaa.sites <- noaa.sites %>% mutate(LAT = as.numeric(as.character(LAT))) %>% 
+    mutate(LON = as.numeric(as.character(LON))) %>% dplyr::filter(LAT < 
+                                                             (lat + 5) & LAT > (lat - 5) & LON < (long + 5) & LON > 
+                                                             (long - 5))
+  pt1 <- cbind(rep(long, length.out = length(noaa.sites$LAT)), 
+               rep(lat, length.out = length(noaa.sites$LAT)))
+  pt2 <- cbind(noaa.sites$LON, noaa.sites$LAT)
+  dist <- diag(geosphere::distm(pt1, pt2, fun = geosphere::distHaversine))/1000
+  noaa.sites$dist <- dist
+  tmp <- which((as.numeric(substr(noaa.sites$END, 1, 4)) >= 
+                  as.numeric(substr(end_datetime, 1, 4))) & as.numeric(substr(noaa.sites$BEGIN, 
+                                                                              1, 4)) <= as.numeric(substr(start_datetime, 1, 4)))
+  noaa.sites <- noaa.sites[tmp, ]
+  noaa.sites <- noaa.sites[with(noaa.sites, order(dist)), 
+                           ]
+  yrs <- seq(as.numeric(substr(start_datetime, 1, 4)), as.numeric(substr(end_datetime, 
+                                                                         1, 4)), by = 1)
+  for (i in 1:length(noaa.sites$dist)) {
+    k <- i
+    available <- vector(mode = "logical", length = length(yrs))
+    USAF <- as.character(noaa.sites$USAF[i])
+    if (nchar(as.character(noaa.sites$WBAN[i])) == 5) {
+      WBAN <- as.character(noaa.sites$WBAN[i])
+    }
+    else {
+      WBAN <- paste0(0, as.character(noaa.sites$WBAN[i]))
+    }
+    y <- as.data.frame(matrix(NA, nrow = 1, ncol = 12))
+    for (j in 1:length(yrs)) {
+      tf = tempfile()
+      res = tryCatch(suppressWarnings(download.file(paste0("ftp://ftp.ncdc.noaa.gov/pub/data/noaa/isd-lite/", 
+                                                           yrs[j], "/", USAF, "-", WBAN, "-", yrs[j], ".gz"), 
+                                                    tf, mode = "wb")), error = function(e) {
+                                                      return("download failed")
+                                                    })
+      if (exists("res") && res == "download failed") {
+        break
+      }
+      x = read.table(tf)
+      x[x == -9999] = NA
+      if (length(which(!is.na(x$V7))) >= 0.9 * length(x$V7)) {
+        available[j] <- TRUE
+        y <- rbind(x, y)
+      }
+      else {
+        break
+      }
+    }
+    if (length(yrs) == length(which(available))) {
+      break
+    }
+  }
+  y <- y[!is.na(y$V1), ]
+  colnames(y) = c("y", "m", "d", "h", "air_temp", "dewtemp", 
+                  "air_kPa", "winddir", "sindspeed", "skycover", "precip1h", 
+                  "precip6h")
+  y$air_kPa = y$air_kPa/100
+  y$air_temp = y$air_temp/10
+  y$DateTime_UTC = readr::parse_datetime(paste0(y$y, "-", 
+                                                sprintf("%02d", y$m), "-", sprintf("%02d", y$d), " ", 
+                                                sprintf("%02d", y$h), ":00:00 0"), "%F %T %Z")
+  y <- y[with(y, order(DateTime_UTC)), ]
+  y = tibble::as_tibble(y) %>% dplyr::select(DateTime_UTC, air_temp, 
+                                      air_kPa)
+  ss = tibble::tibble(DateTime_UTC = seq(y$DateTime_UTC[1], 
+                                         y$DateTime_UTC[nrow(y)], by = 900))
+  xx = left_join(ss, y, by = "DateTime_UTC")
+  xx = mutate(xx, air_temp = zoo::na.approx(air_temp, na.rm=F), air_kPa = zoo::na.approx(air_kPa, na.rm=F))
+  daterng = c(start_datetime, end_datetime)
+  xtmp = xx %>% dplyr::filter(DateTime_UTC >= daterng[1] & DateTime_UTC <= 
+                         daterng[2])
+  return(dplyr::select(xtmp, DateTime_UTC, air_kPa, air_temp))
+}
 
 
 

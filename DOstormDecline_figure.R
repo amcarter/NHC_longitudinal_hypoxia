@@ -33,7 +33,7 @@ DOdat[w, c(3,7)] <- 0
 
 DOdat$site <- factor(DOdat$site, levels = NHCsites2018)
 
-png("figures/DOStormTrajectories.png", width=8.125, height=5, units="in", res=300)
+png("figures/DOStormTrajectories_pulse.png", width=8.125, height=5, units="in", res=300)
 par(mfrow=c(3,4), mar=c(0,0,0,0), oma=c(5,5,4,2))
 for(i in 1:12){
     minwin=0:6
@@ -58,6 +58,13 @@ for(i in 1:12){
         side=3,line=-1.4, adj=.95, cex=.6, font=4)
   mtext(paste0("damp/day = ", round(a$params$amp_recovery_percent.day, 0), "%"), 
         side=3, line=-2.3, adj=.95, cex=.6, font=4)
+  if(ss %in% c("Mtrib","MC1","UNHC","NHC","NHC5")){
+    mtext(paste0('storm pulse = ',round(a$params$stormpulse,0),'%'),
+        side=1, line=-2.5, adj=.95, cex=.6, font=4)
+  }else{
+    mtext(paste0('storm pulse = ',round(a$params$stormpulse,0),'%'),
+          side=3, line=-3.2, adj=.95, cex=.6, font=4)
+  }
   if(i %in% c(1,5,9)){
     axis(2, at=c(0,50,100),col = "grey30", col.axis = "grey20", tck=-.05, labels=NA)
     axis(2, at=c(0,50,100),col = "grey30",lwd = 0, line = -.6, cex=.8)
@@ -74,12 +81,12 @@ for(i in 1:12){
   mtext(text="DO (%sat)",side=2,line=1.8,outer=TRUE)
   par(new=T, mfrow = c(1,1), mar = c(0,0,1,0), oma = c(0,0,1,0))
   
-  legend("top", legend=c("DO (%sat)    ","Fit line","Storm peak   ", "daily min ", "daily max"), 
-         cex=.8, bty="n",ncol=5, xpd=NA, 
+  legend("top", legend=c("DO (%sat)    ","Fit line","Storm peak   ", "daily min ", "daily max", "storm pulse"), 
+         cex=.8, bty="n",ncol=6, xpd=NA, 
          pt.cex=c(1.2,1.4,1.4,1.2,1.2),
-         col=c("grey50","grey50","black","brown3","steelblue"),
-         lty=c(1,2,NA,NA,NA),
-         pch=c(NA,NA,20,20,20),
+         col=c("grey50","grey50","black","brown3","steelblue","white"),
+         lty=c(1,2,NA,NA,NA,NA),
+         pch=c(NA,NA,20,20,20,NA),
          x.intersp=.2)
          
 

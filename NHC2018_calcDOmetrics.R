@@ -11,13 +11,17 @@ library(dplyr)
 library(streamMetabolizer)
 library(zoo)
 
-setwd("C:/Users/Alice Carter/Dropbox (Duke Bio_Ea)/projects/NHC_longitudinal_hypoxia/Code and Figs")
-
+setwd(hypox_projdir)
+source("DO_metrics_fns.R")
 # Read in compiled DO data
+
+sites <- read.csv("NHC_map/NC_synopticSamplingSites.csv", header=T, stringsAsFactors = F)
+
 DOdat <- read.csv("data/raw/allSites_20180706.csv", header = T, stringsAsFactors = F)
 DOdat$DateTime_UTC <- ymd_hms(DOdat$DateTime_UTC)
-NHCsites2018 <- c("Mud","MC751","MC3","MC2","MC1","UNHC","NHC",
+NHCsites2018 <- c("Mtrib","MC751","MC3","MC2","MC1","UNHC","NHC",
                   "NHC5","NHC4","NHC3","NHC2","NHC1")
+DOdat$site[DOdat$site=="Mud"]<- "Mtrib"
 startdate <- ymd_hms("2018-06-12 13:45:00 UTC")
 enddate <- ymd_hms("2018-07-06 02:45:00 UTC")
 
@@ -32,7 +36,207 @@ DOdat$Date <- as.Date(DOdat$DateTime, tz="EST")
 w <-which(DOdat$DO_mgL<0)
 DOdat[w, c(3,7)] <- 0
 
-DOdat$site <- factor(DOdat$site, levels = NHCsites2018)
+# Calculate metrics:
+# Annual: mean, range, night hypox ratio, num hypoxic events, max hypoxia duration, modal undersaturation, ____undersaturation
+# seasonal: night hypox ratio, pr(hypox)pr(anox)
+# Event: Storm pulse, oxygen demand, amplitude recovery
+# daily: mean, min, amplitude
+
+#hypoxia thresholds:
+th1=.25
+th2=.5
+
+# daily metrics:
+# calculated for pre-storm day, 6/25/2018
+
+prestorm <- as.Date("2018-06-25")
+DO_day <- DOdat[DOdat$Date==prestorm,] %>%group_by(site) %>%
+  summarise(mean_DO_persat=mean(persatDO, na.rm=T),
+            min_DO_persat=min(persatDO, na.rm=T),
+            max_DO_persat=max(persatDO, na.rm=T))
+
+DO_day$amp_DO_persat <- DO_day$max_DO_persat-DO_day$min_DO_persat
+colnames(DO_day)<- c("site",  paste0(colnames(DO_day[,2:5]),".6.25"))
+
+# multiple days/event:
+# calculated from whole considered timeperiod
+stormdate<- as.Date("2018-06-26")
+DO_event<- data.frame()
+for(site in NHCsites2018){
+  dat<- DOdat[DOdat$site==site,]
+  # probability of hypoxia
+  cdf<- ecdf(dat$persatDO)
+  pr_anox <- cdf(0)
+  pr_hypox_th1<- cdf(th1)
+  pr_hypox_th2<- cdf(th2)
+  # ratio of night hypox/total hypox
+  night_hypox_ratio <- calc_night_hypoxia(dat$DateTime, dat$persatDO, threshold = .5, 
+                                          lat=sites$Lat[sites$site==site], 
+                                          long=sites$Long[sites$site==site])$night_hypoxia_ratio
+  med_hypox_interval_hrs <- hypoxia_durations(dat$persatDO)$median_hrs
+  max_hypox_interval_hrs <- hypoxia_durations(dat$persatDO)$max_hrs
+  
+  # storm event metrics
+  storm <- calc_DO_storm_recovery(dat$DateTime, dat$persatDO, stormdate)$params
+  
+  tmp <- data.frame(site=site, days=nrow(dat)/96,
+                    pr_anox=pr_anox, pr_hypox_th1=pr_hypox_th1, pr_hypox_th2=pr_hypox_th2, 
+                    night_hypox_ratio=night_hypox_ratio,
+                    med_hypox_interval_hrs=med_hypox_interval_hrs, max_hypox_interval_hrs=max_hypox_interval_hrs,
+                    dDO.day_min=storm$dDO.day_min, amp_recovery.day=storm$amp_recovery_percent.day, stormpulse=storm$stormpulse)
+  DO_event <- rbind(DO_event, tmp)
+}
+
+DO_metrics <- full_join(DO_day, DO_event, by="site")
+write_csv(DO_metrics, "data/DO_metrics_2020_06_03.csv")
+
+###########################################################################
+#calculate annual metrics
+
+#######################################
+#load annual data for flashiness and sagginess
+
+annual_dat <- read.csv("data/raw/2019SPsites.csv", header=T, stringsAsFactors = F)
+annual_dat$DateTime_UTC <- ymd_hms(annual_dat$DateTime_UTC)
+annual_dat$DateTime <- with_tz(annual_dat$DateTime_UTC, tz="EST")
+annual_dat$date <- as.Date(annual_dat$DateTime, tz = "EST")
+annual_dat$year <- year(annual_dat$date)
+
+yearsites <- c("NHC","UNHC","Mud","MC751")
+sites$site[sites$site=="Mtrib"]<- "Mud"
+DO_annual<- data.frame()
+for(site in yearsites){
+  lat = sites$Lat[sites$site==site]
+  long= sites$Long[sites$site==site]
+    
+  siteyears=c(2017,2018,2019)
+  if(site=="MC751"){siteyears=2019}
+  
+  for(i in siteyears){
+    dat <- annual_dat[annual_dat$site==site&annual_dat$year==i,]
+    meanDO <- mean(dat$persatDO, na.rm=T)
+    minDO <- min(dat$persatDO, na.rm=T)
+    maxDO <- max(dat$persatDO, na.rm=T)
+    night <- calc_night_hypoxia(dat$DateTime, dat$persatDO, .5, lat, long)
+    intervals <- hypoxia_durations(dat$persatDO)
+    
+    ### duration statistics
+    # Summarize by day
+    datdaily <- dat %>% dplyr::group_by(date) %>% 
+      dplyr::summarise(mean.persatDO = mean(persatDO, na.rm=T),
+                     min.persatDO=min(persatDO, na.rm=T),
+                     max.persatDO=max(persatDO,na.rm=T))
+    datdaily$mean.persatDO[is.infinite(datdaily$mean.persatDO)]<- NA
+    modeDO_daily <- calcmode(round(datdaily$mean.persatDO,2))
+    meanDO_daily <- mean(datdaily$mean.persatDO, na.rm=T)
+    varDO_daily<- var(datdaily$mean.persatDO, na.rm=T)
+    mu <- log(meanDO_daily^2/sqrt(meanDO_daily^2+varDO_daily))
+    sigma <- sqrt(log(1+varDO_daily/meanDO_daily^2))
+    
+    hist(datdaily$mean.persatDO, main="", xlab="", xaxt="n", yaxt="n", ylab="n")
+    par(new=T)
+    
+    x <- seq(0,1, by=.05)
+    y <- dlnorm(x, meanlog=(meanDO_daily), sdlog=.4)
+    plot(x,y)
+    plot(ecdf(datdaily$mean.persatDO), main=paste(site,i))
+    
+    #datdaily$mean.persatDO <- na.approx(datdaily$mean.persatDO)
+
+    
+    tmp <- data.frame(site=site, year=i, min_DO_persat=minDO,max_DO_persat=maxDO, mean_DO_persat=meanDO,
+                      mode_DO_daily_persat=modeDO_daily,
+                      night_hypox_ratio=night$night_hypoxia_ratio, per_hypox=night$per_hypox,
+                      max_hypox_interval_days=intervals$max_hrs/24, num_hypox_intervals = length(intervals$interval_lengths)
+                      )
+    DO_annual <- rbind(DO_annual, tmp)
+  }
+}
+  
+  
+
+write_csv(DO_annual, "data/DO_annual_metrics_2020_06_03.csv")
+
+
+
+
+
+
+
+datdailyNHC <- datNHC %>% dplyr::group_by(site, Date) %>% 
+  dplyr::summarise(mean.persatDO = mean(persatDO, na.rm=T),
+                   min.persatDO=min(persatDO, na.rm=T),
+                   max.persatDO=max(persatDO,na.rm=T),
+                   sd.persatDO = sd(persatDO, na.rm=T)) 
+datdailyNHC$mean.persatDO <- na.approx(datdailyNHC$mean.persatDO)
+
+datdaily <- rbind(datdaily, datdailyNHC)
+datdaily$year <- year(datdaily$Date)
+
+annualSites <- c("Mud","MC751", "UNHC", "NHC")
+# Calculate RBI for each time series
+# m is a DO timeseries, t is the corresponding time intervals.
+# The resulting metric is in units of DO %sat/time
+# Make sure that time intervals are 1 hour for consistency
+RBIcalc <- function(m,t){
+  l <- abs(diff(m, na.rm=T))
+  RBI <- sum(l, na.rm=T)/as.numeric((t[length(t)]-t[1]))
+  RBI
+}
+
+sag_calc <- function(DO, t){
+  DO <- na.approx(DO)
+  DO <- sort(DO, decreasing=T)
+  index <- seq(1:length(DO))
+  freq <- index/(length(DO))
+  l <- diff(freq)[1]
+  DO.m <- rep(1,length(DO)-1)
+  for(i in 1:(length(DO)-1)){
+    DO.m[i] <- (DO[i]+DO[i+1])/2
+  }
+  area <- sum(DO.m)*l
+  area
+}
+DOannualmetrics <- datdaily %>% dplyr::group_by(site,year) %>%
+  dplyr::summarise(meanDO = mean(mean.persatDO, na.rm=T),
+                   minDO = min(mean.persatDO, na.rm=T),
+                   maxDO = max(mean.persatDO, na.rm=T))
+DOannualmetrics$flashiness <- 999
+DOannualmetrics$sagginess <- 999
+
+for(i in 1:nrow(DOannualmetrics)){
+  site <- DOannualmetrics$site[i]
+  year <- DOannualmetrics$year[i]
+  DO <- datdaily[datdaily$site==site&datdaily$year==year,]
+  DOannualmetrics$flashiness[i] <- RBIcalc(DO$mean.persatDO, DO$Date)
+  DOannualmetrics$sagginess[i] <- sag_calc(DO$mean.persatDO, DO$Date)
+}
+
+
+DOannualmetrics[,3:7] <- round(DOannualmetrics[,3:7]*100,1)
+write_csv(DOannualmetrics, "data/DOAnnualMetrics_04-16-20.csv")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # YSIdat <- read_csv("data/FieldConcFluxes_NHCMC_20180702.csv")%>%
 #   select(site, SOM = SedOrgM.per, ysi.DO_mgL = DO.mgL.ysi, ysi.persatDO = DO.persat.ysi)
@@ -47,7 +251,7 @@ DOdat$site <- factor(DOdat$site, levels = NHCsites2018)
 # Calculate statistics for percent of time hypoxic
 # Set Thresholds:
 th1 <- .50
-th2 <- 5
+th2 <- .25
 
 hypoDOdat <- DOdat
 hypoDOdat$hypox.th2 <- rep(NA, nrow(DOdat))
