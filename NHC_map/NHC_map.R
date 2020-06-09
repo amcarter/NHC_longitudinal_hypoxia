@@ -13,8 +13,9 @@ library(rgdal)
 library(maps)
 options(stringsAsFactors = FALSE)
 
+setwd(hypox_projdir)
 # Get sample station locations
-sites <- read.csv("NC_synopticSamplingSites.csv", header=T, stringsAsFactors = F)
+sites <- read.csv("NHC_map/NC_synopticSamplingSites.csv", header=T, stringsAsFactors = F)
 sites_sf <- sites[c(1:12),1:3] %>% 
   st_as_sf(coords=c("Long","Lat"),remove=F, crs=4326)
 wwtp_sf <- sites[15,1:3] %>% 
@@ -37,14 +38,14 @@ wwtp_sf <- sites[15,1:3] %>%
 #               save_file_name, 
 #               "download")
 
-cur_nhd <- st_read("NHC_NHD_subset.gpkg") 
+cur_nhd <- st_read("NHC_map/NHC_NHD_subset.gpkg") 
  
  
 # NHC <- sites[sites$site=="NHC",1:3]%>%
 #   st_as_sf(coords=c("Long","Lat"),remove=F, crs=4326)
 
 # attach comids to each sample station
-comid_points<- rep(NA, 12)
+comid_points<- rep(NA, 13)
 for(i in 1:nrow(sites_sf)){
   comid_points[i]<- discover_nhdplus_id(sites_sf[i,])  
 }
@@ -65,7 +66,7 @@ longitudinal_transect <- NHC_mainstem %>%
   filter(!comid %in% UMC_NHD$comid)
 
 sample_site_NHD_reaches <- tibble(comid=comid_points) %>%
-  left_join(longitudinal_transect)%>% st_as_sf()
+  left_join(NHC_m)%>% st_as_sf()
 
 siteDat <- sample_site_NHD_reaches %>% 
   select(comid, streamorde, pathlength, slope, totdasqkm )

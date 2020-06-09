@@ -23,6 +23,8 @@ library(nhdplusTools)
 library(tidyverse)
 library(sf)
 library(tmap)
+
+setwd(hypox_projdir)
 tmap_mode("view") #makes map plots interactive
 ```
 
@@ -31,10 +33,12 @@ tmap_mode("view") #makes map plots interactive
 
 ```{r target_hucs}
 # USGS gage ID at NHC blands
-NHC_gage_id <- "02097314"
-NHC_sites <- read.csv("NC_synopticSamplingSites.csv", header=T, stringsAsFactors = F)
+setwd(hypox_projdir)
 
-sites_sf <- NHC_sites[c(1:5,8:11),1:3] %>% 
+NHC_gage_id <- "02097314"
+NHC_sites <- read.csv("NHC_map/NC_synopticSamplingSites.csv", header=T, stringsAsFactors = F)
+
+sites_sf <- NHC_sites[1:13,1:3] %>% 
   st_as_sf(coords=c("Long","Lat"),remove=F, crs=4326)
 
 site_MCconf <- NHC_sites[14,1:3] %>%
@@ -125,7 +129,7 @@ slopes <- longitudinal_transect %>%
   select(comid, pathlength, minelevraw, slope)
 
 write.csv(slopes, file = "2018TransectSlopes.csv", row.names = F)
-write.csv(siteDat, file = "NHC_sensorsite_data.csv", row.names=F)
+write.csv(siteDat, file = "NHC_map/NHD_sensorsite_data.csv", row.names=F)
 
 tm_shape(sample_site_NHD_reaches) + tm_lines(col="totdasqkm",style = "cont")+
   tm_shape(sites_sf)+ tm_dots()

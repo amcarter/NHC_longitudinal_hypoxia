@@ -10,6 +10,7 @@ library(lubridate)
 library(dplyr)
 library(streamMetabolizer)
 library(zoo)
+library(scales)
 
 setwd(hypox_projdir)
 source("DO_metrics_fns.R")
@@ -73,21 +74,26 @@ for(site in NHCsites2018){
   night_hypox_ratio <- calc_night_hypoxia(dat$DateTime, dat$persatDO, threshold = .5, 
                                           lat=sites$Lat[sites$site==site], 
                                           long=sites$Long[sites$site==site])$night_hypoxia_ratio
-  med_hypox_interval_hrs <- hypoxia_durations(dat$persatDO)$median_hrs
-  max_hypox_interval_hrs <- hypoxia_durations(dat$persatDO)$max_hrs
-  
+  max_hypox_interval_days <- hypoxia_durations(dat$persatDO)$max_hrs/24
+  max_anox_interval_days <- hypoxia_durations(dat$persatDO, threshold = 0)$max_hrs/24
   # storm event metrics
   storm <- calc_DO_storm_recovery(dat$DateTime, dat$persatDO, stormdate)$params
   
   tmp <- data.frame(site=site, days=nrow(dat)/96,
                     pr_anox=pr_anox, pr_hypox_th1=pr_hypox_th1, pr_hypox_th2=pr_hypox_th2, 
                     night_hypox_ratio=night_hypox_ratio,
-                    med_hypox_interval_hrs=med_hypox_interval_hrs, max_hypox_interval_hrs=max_hypox_interval_hrs,
+                    max_anox_interval_days=max_anox_interval_days,
+                    max_hypox_interval_days=max_hypox_interval_days,
                     dDO.day_min=storm$dDO.day_min, amp_recovery.day=storm$amp_recovery_percent.day, stormpulse=storm$stormpulse)
   DO_event <- rbind(DO_event, tmp)
 }
 
+sites$dist_upstream <- sites$pathlength-sites$pathlength[sites$site=="NHC1"]
 DO_metrics <- full_join(DO_day, DO_event, by="site")
+DO_metrics <- left_join(DO_metrics, sites[,c(1,9,10)])
+
+
+
 write_csv(DO_metrics, "data/DO_metrics_2020_06_03.csv")
 
 ###########################################################################
@@ -156,10 +162,6 @@ for(site in yearsites){
   
 
 write_csv(DO_annual, "data/DO_annual_metrics_2020_06_03.csv")
-
-
-
-
 
 
 

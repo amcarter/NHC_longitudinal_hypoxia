@@ -90,17 +90,17 @@ calc_DO_storm_recovery<- function(local_dt,DO, stormdate,minwin=0:6, maxwin=9:19
   dDO.day_min <- min_slope*60*60*24 # convert to dDO/day
   dDO.day_max <- max_slope*60*60*24 # convert to dDO/day
   
-  plot(dat$dt, dat$DO, col="grey40", type="l",lwd=1.2,
-       xaxt="n",yaxt="n",xlab="",ylab="",ylim = c(0,150))
-  abline(min_int,min_slope, lwd=1.5, lty=2, col="grey50")
-  abline(min_int,min_slope, lwd=1.5, lty=2, col=alpha("brown3",.6))
-  abline(max_int,max_slope, lwd=1.5, lty=2, col="grey50")
-  abline(max_int,max_slope, lwd=1.5, lty=2, col=alpha("steelblue", alpha=.6))
-  points(daily$min_time, daily$min_DO, col="brown3", pch=19)
-  points(daily$max_time, daily$max_DO, col="steelblue", pch=19)
-  points(daily$max_time[1], daily$max_DO[1], pch=19, cex=1.2)
-  arrows(peak_time-60*60*24, peak_DO-stormpulse,peak_time-60*60*24, peak_DO,length=.06, angle=90, lwd=2  )
-  arrows(peak_time-60*60*24, peak_DO,peak_time-60*60*24, peak_DO-stormpulse, length=.06, angle=90, lwd=2  )
+  # plot(dat$dt, dat$DO, col="grey40", type="l",lwd=1.2,
+  #      xaxt="n",yaxt="n",xlab="",ylab="",ylim = c(0,150))
+  # abline(min_int,min_slope, lwd=1.5, lty=2, col="grey50")
+  # abline(min_int,min_slope, lwd=1.5, lty=2, col=alpha("brown3",.6))
+  # abline(max_int,max_slope, lwd=1.5, lty=2, col="grey50")
+  # abline(max_int,max_slope, lwd=1.5, lty=2, col=alpha("steelblue", alpha=.6))
+  # points(daily$min_time, daily$min_DO, col="brown3", pch=19)
+  # points(daily$max_time, daily$max_DO, col="steelblue", pch=19)
+  # points(daily$max_time[1], daily$max_DO[1], pch=19, cex=1.2)
+  # arrows(peak_time-60*60*24, peak_DO-stormpulse,peak_time-60*60*24, peak_DO,length=.06, angle=90, lwd=2  )
+  # arrows(peak_time-60*60*24, peak_DO,peak_time-60*60*24, peak_DO-stormpulse, length=.06, angle=90, lwd=2  )
   # mtext(paste0("min r2 = ",round(min_r2,2),
   #              "    max r2 = ",round(max_r2,2)),1, -2)
   params <- data.frame(dDO.day_min=dDO.day_min,
@@ -139,7 +139,7 @@ calc_night_hypoxia<- function(local_dt, DO, threshold=0.5, lat, long){
   per_day_hypox <- sum(dat$hypox[dat$light==1])/nrow(dat[dat$light==1,])
   
   
-  night_hypoxia_ratio <- per_night_hypox/per_hypox
+  night_hypoxia_ratio <- per_night_hypox/per_day_hypox
   
   # plot(dat$solar_time, dat$DO, type="l", ylim = c(0,1.2))
   # abline(v=dat$dt[dat$light==0], col=alpha("black",.01))

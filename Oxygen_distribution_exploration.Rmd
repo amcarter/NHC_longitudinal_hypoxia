@@ -1,0 +1,139 @@
+---
+title: "Dissolved Oxygen Distributions"
+author: "Alice Carter"
+date: "6/9/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(lubridate)
+library(dplyr)
+library(streamMetabolizer)
+library(zoo)
+library(scales)
+
+source("DO_metrics_fns.R")
+```
+
+# Oxygen Duration Curves
+
+Goal: Describe and quantify distributions of daily mean dissolved oxygen for intercomparison between years and sites 
+
+In hydrology, flow duration curves describe the probability of a daily mean flow exceeding any given value. We can construct a similar curve using daily mean dissolved oxygen concentrations. Here is a duration curve for New Hope Creek over 2019 show with the actual DO daily means in grey
+
+
+```{r echo= FALSE}
+###################################
+# Plot curves for years in NHC
+
+
+plot_exceedence <- function(tmp, col="black", lty=1){
+  tmp <- tmp[which(!is.na(tmp))]
+  tmp<- sort(tmp, decreasing=T)
+  index <- seq(1:length(tmp))
+  freq <- 100*(index/(1+length(tmp)))
+  lines(freq,tmp, lwd = 2, col = col, lty=lty)
+}
+
+dat <- read.csv("data/raw/NHCdat.csv", header = T, stringsAsFactors = F)
+dat$DateTime_UTC <- ymd_hms(dat$DateTime_UTC)
+dat$DateTime <- with_tz(dat$DateTime_UTC, tz="EST")
+dat$Date <- as.Date(dat$DateTime, tz = "EST")
+
+datdaily <- dat %>% dplyr::group_by(Date) %>% 
+  dplyr::summarise(mean.persatDO = mean(persatDO, na.rm=T),
+                   sd.persatDO = sd(persatDO, na.rm=T),
+                   Q=mean(discharge_cms, na.rm=T)) 
+datdaily$mean.persatDO <- na.approx(datdaily$mean.persatDO)
+
+datdaily$year <- strftime(datdaily$Date, format = "%Y")
+
+plot(datdaily$mean.persatDO, datdaily$mean.persatDO, main="NHC 2019",
+     xlim = c(0,100), ylim = c(0,120), type = "n",
+     ylab = "Daily mean DO (% sat)", xlab = "Exceedence Frequency")
+plot_exceedence(100*datdaily[datdaily$year==2019,]$mean.persatDO, lty=1)
+par(new=T)
+plot(datdaily[datdaily$year==2019,]$Date, 100*datdaily[datdaily$year==2019,]$mean.persatDO,
+     type="l", ylim = c(0,120), col="grey50",
+     xaxt="n",yaxt="n",xlab="",ylab="")
+```
+
+From a little exploration, we see that these oxygen duration curves follow a similar pattern to the flow duration curves from the same site and year. For example, changes in shape in the flow duration curves at New Hope Creek mirror those changes in shape of the oxygen duration curves:
+
+```{r, echo=FALSE}
+par(mfrow = c(1,2), mar = c(4,4,1,1))
+plot(datdaily$mean.persatDO, datdaily$mean.persatDO, 
+     xlim = c(0,100), ylim = c(0,120), type = "n",
+     ylab = "Daily mean DO (% sat)", xlab = "Exceedence Frequency", 
+     main = "")
+legend("bottomleft", legend = c("2017","2018","2019"),cex=.7,bty="n", lty = c(1,2,3), lwd=2)
+for(i in c(2017,2018,2019)){
+  plot_exceedence(100*datdaily[datdaily$year==i,]$mean.persatDO, lty=i)
+}
+datdaily$Q <- na.approx(datdaily$Q)
+#par(mfrow = c(1,1), mar = c(4,4,1,1))
+plot(datdaily$Q, datdaily$mean.persatDO, 
+     xlim = c(0,100), ylim = c(-10,10), type = "n",
+     ylab = "log(Q)", xlab = "Exceedence Frequency", 
+     main = "")
+for(i in c(2017,2018,2019)){
+  plot_exceedence(log(datdaily[datdaily$year==i,]$Q), lty=i)
+}
+
+```
+
+It is also clear that these curves have important differences. 
+
+Daily mean flows follow a log normal distribution and have rare, very high values. Daily mean oxygen almost always has a modal value ~ 100% saturation because this is where the system returns to when only physical controls are at play. Additionally the range of possible values is constrained between 0% and ~130% whereas flow can span several orders of magnitude. 
+
+# Oxygen Distributions
+To start thinking about this, I have explored the distribution shapes and exceedence curves from all of the complete site years I have data from:
+
+```{r, echo=FALSE, message=F}
+
+#######################################
+#load annual data for flashiness and sagginess
+sites <- read.csv("NHC_map/NC_synopticSamplingSites.csv", header=T, stringsAsFactors = F)
+
+annual_dat <- read.csv("data/raw/2019SPsites.csv", header=T, stringsAsFactors = F)
+annual_dat$DateTime_UTC <- ymd_hms(annual_dat$DateTime_UTC)
+annual_dat$DateTime <- with_tz(annual_dat$DateTime_UTC, tz="EST")
+annual_dat$date <- as.Date(annual_dat$DateTime, tz = "EST")
+annual_dat$year <- year(annual_dat$date)
+
+yearsites <- c("NHC","UNHC","Mud")
+sites$site[sites$site=="Mtrib"]<- "Mud"
+par(mfrow = c(3,3), mar = c(3,3,1,1), oma=c(3,3,0,0))
+
+for(site in yearsites){
+  lat = sites$Lat[sites$site==site]
+  long= sites$Long[sites$site==site]
+    
+  siteyears=c(2017,2018,2019)
+  if(site=="MC751"){siteyears=2019}
+  
+  for(i in siteyears){
+    dat <- annual_dat[annual_dat$site==site&annual_dat$year==i,]
+   
+    ### duration statistics
+    # Summarize by day
+    datdaily <- dat %>% dplyr::group_by(date) %>% 
+      dplyr::summarise(mean.persatDO = mean(persatDO, na.rm=T))
+    datdaily$mean.persatDO[is.infinite(datdaily$mean.persatDO)]<- NA
+    
+    hist(datdaily$mean.persatDO, main="", xlab="", xaxt="n", yaxt="n", ylab="")
+    par(new=T)
+    plot(ecdf(datdaily$mean.persatDO), main="", xlab="DO %sat", ylab="frequency")
+    mtext(paste(site,i), 3, -1.5, .1, cex=.8)
+    }
+}
+mtext("DO (% sat)", side=1, outer=T)
+mtext("frequency", side=2, outer=T)
+
+```
+
+# Questions: 
+1. What type of distribution best describes the daily means of DO from an annual timeseries?
+2. What can we learn from DO duration curves?
+3. How do hydrologists quantify flow duration curves? Are any of these metrics meaningful for this application?

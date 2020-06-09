@@ -9,18 +9,19 @@
   \begin{center}
     \caption{Metrics for dissolved oxygen timeseries at the daily, event, and annual timescales.}
     \label{tab:table1}
-    \begin{tabular}{p{.8in}|p{1in}|p{1.5in}|p{2in}} 
+    \begin{tabular}{p{.8in}|p{1in}|p{1.5in}|p{3in}} 
       \textbf{Timescale} & \textbf{Metric} & \textbf{Equation} & \textbf{Description}\\
       \hline
 	\multirow{3}{*}{Daily} & Mean & $\overline{DO}=\frac{1}{n}\sum_{i=1}^{n} DO_{i}$ & Mean DO over the day\\ 
       & Minimum & $DO_{min}$ & minimum DO\\
 	& Amplitude & $DO_{max}-DO_{min}$ & Amplitude of daily DO change\\
 	\hline
-      \multirow {3}{*}{Storm Event} & Storm \newline Amplitude & $DO_{max,s+1} - DO_{min,s}$ & Amplitude of DO pulse delivered by a storm on day $s$\\
-      &Ecosystem Oxygen Demand & $\frac{dDO_{min}}{dt}|_{s+1}^{s+4}$ & Slope of DO minima over 4 days following a storm\\
-	& Amplitude Recovery & $\frac{dAmp}{dt}|_{s+1}^{s+5}/Amp_{s-1}$ & Slope of daily amplitudes over 5 days following a storm\\
+      \multirow {3}{*}{Storm Event} &Ecosystem \newline Oxygen Demand & $\frac{dDO_{min}}{dt}$ & Slope of DO minima over period of linear decline following a storm \\
+      & Amplitude Recovery & $\frac{dDO_{max}}{dt} - \frac{dDO_{min}}{dt}$ & The difference in slopes of daily DO maxima and minima over period of linear change following a storm\\
+      &Storm DO \newline Pulse & $DO_{max,s} - DO_{max,s-1}$ & Magnitude of DO pulse delivered by a storm on day $s$\\
+	
 	\hline
-	\multirow{2}{*}{Annual} & Sagginess & $\int_{0\%}^{100\%} \overline{DO}$ & Area under the annual oxygen duration curve\\
+	\multirow{2}{*}{Full \newline Timeseriesl} & Probability of\newline hypoxia <= h & $\int_{0\%}^{100\%} \overline{DO}$ & Area under the annual oxygen duration curve\\
 	& Flashiness & $\frac{\sum_{i=1}^{n} |DO_{i}-DO_{i-1}|}{\sum_{i=1}^{n} DO_{i}}$ & flashiness\\
     \end{tabular}
   \end{center}

@@ -6,6 +6,8 @@
 # Calculate and plot flow exceedence curves for annual DO data
 
 library(lubridate)
+library(zoo)
+setwd(hypox_projdir)
 
 dat <- read.csv("data/raw/2019SPsites.csv", header = T, stringsAsFactors = F)
 dat$DateTime_UTC <- ymd_hms(dat$DateTime_UTC)
@@ -17,7 +19,7 @@ dat$Date <- as.Date(dat$DateTime, tz = "EST")
 datdaily <- dat %>% dplyr::group_by(site, Date) %>% 
   dplyr::summarise(mean.persatDO = mean(persatDO, na.rm=T),
                    sd.persatDO = sd(persatDO, na.rm=T)) 
-datdaily$mean.persatDO <- na.approx(datdaily$mean.persatDO)
+datdaily$mean.persatDO <- na.approx(datdaily$mean.persatDO, na.rm=F)
 
 # Calculate exceedence curve for a site
 
@@ -75,12 +77,12 @@ for(i in c(2017,2018,2019)){
 ###################################
 # DO rating curve
 
-plot(datdaily$mean.persatDO, datdaily$Q, log="y")
+#plot(datdaily$mean.persatDO, datdaily$Q, log="y")
 datdaily$Q <- na.approx(datdaily$Q)
-par(mfrow = c(1,1), mar = c(4,4,1,1))
+#par(mfrow = c(1,1), mar = c(4,4,1,1))
 plot(datdaily$Q, datdaily$mean.persatDO, 
      xlim = c(0,100), ylim = c(-10,10), type = "n",
-     ylab = "Q", xlab = "Exceedence Frequency", 
+     ylab = "log(Q)", xlab = "Exceedence Frequency", 
      main = "")
 
 for(i in c(2017,2018,2019)){
