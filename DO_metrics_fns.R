@@ -14,16 +14,17 @@ library(lubridate)
 library(dplyr)
 library(readr)
 library(streamMetabolizer)
+library(scales)
 
-dat <- read_csv("data/raw/NHCdat.csv")
-sites <- read.csv("NHC_map/NC_synopticSamplingSites.csv", header=T, stringsAsFactors = F)
-
-stormdate <- as.Date("2018-06-26")
-DO <- dat$DO_mgL
-UTC_dt <- dat$DateTime_UTC
-local_dt <- lubridate::with_tz(UTC_dt, tz="EST")
-long <- sites$Long[1]
-lat <- sites$Lat[1]
+# dat <- read_csv("data/raw/NHCdat.csv")
+# sites <- read.csv("NHC_map/NC_synopticSamplingSites.csv", header=T, stringsAsFactors = F)
+# 
+# stormdate <- as.Date("2018-06-26")
+# DO <- dat$DO_mgL
+# UTC_dt <- dat$DateTime_UTC
+# local_dt <- lubridate::with_tz(UTC_dt, tz="EST")
+# long <- sites$Long[1]
+# lat <- sites$Lat[1]
 
 ###########################################################################
 # Slope of mins and maxes and amplitude recovery after a storm
@@ -90,19 +91,19 @@ calc_DO_storm_recovery<- function(local_dt,DO, stormdate,minwin=0:6, maxwin=9:19
   dDO.day_min <- min_slope*60*60*24 # convert to dDO/day
   dDO.day_max <- max_slope*60*60*24 # convert to dDO/day
   
-  # plot(dat$dt, dat$DO, col="grey40", type="l",lwd=1.2,
-  #      xaxt="n",yaxt="n",xlab="",ylab="",ylim = c(0,150))
-  # abline(min_int,min_slope, lwd=1.5, lty=2, col="grey50")
-  # abline(min_int,min_slope, lwd=1.5, lty=2, col=alpha("brown3",.6))
-  # abline(max_int,max_slope, lwd=1.5, lty=2, col="grey50")
-  # abline(max_int,max_slope, lwd=1.5, lty=2, col=alpha("steelblue", alpha=.6))
-  # points(daily$min_time, daily$min_DO, col="brown3", pch=19)
-  # points(daily$max_time, daily$max_DO, col="steelblue", pch=19)
-  # points(daily$max_time[1], daily$max_DO[1], pch=19, cex=1.2)
-  # arrows(peak_time-60*60*24, peak_DO-stormpulse,peak_time-60*60*24, peak_DO,length=.06, angle=90, lwd=2  )
-  # arrows(peak_time-60*60*24, peak_DO,peak_time-60*60*24, peak_DO-stormpulse, length=.06, angle=90, lwd=2  )
-  # mtext(paste0("min r2 = ",round(min_r2,2),
-  #              "    max r2 = ",round(max_r2,2)),1, -2)
+  plot(dat$dt, dat$DO, col="grey40", type="l",lwd=1.2,
+       xaxt="n",yaxt="n",xlab="",ylab="",ylim = c(0,1.20))
+  abline(min_int,min_slope, lwd=1.5, lty=2, col="grey50")
+  abline(min_int,min_slope, lwd=1.5, lty=2, col=alpha("brown3",.6))
+  abline(max_int,max_slope, lwd=1.5, lty=2, col="grey50")
+  abline(max_int,max_slope, lwd=1.5, lty=2, col=alpha("steelblue", alpha=.6))
+  points(daily$min_time, daily$min_DO, col="brown3", pch=19)
+  points(daily$max_time, daily$max_DO, col="steelblue", pch=19)
+  points(daily$max_time[1], daily$max_DO[1], pch=19, cex=1.2)
+  arrows(peak_time-60*60*24, peak_DO-stormpulse,peak_time-60*60*24, peak_DO,length=.06, angle=90, lwd=2  )
+  arrows(peak_time-60*60*24, peak_DO,peak_time-60*60*24, peak_DO-stormpulse, length=.06, angle=90, lwd=2  )
+  mtext(paste0("min r2 = ",round(min_r2,2),
+               "    max r2 = ",round(max_r2,2)),1, -2)
   params <- data.frame(dDO.day_min=dDO.day_min,
                        dDO.day_max=dDO.day_max,
                        pre_amplitude=preamp,
