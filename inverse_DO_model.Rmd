@@ -1,0 +1,79 @@
+---
+title: "Inverse DO model"
+author: "Alice Carter"
+date: "6/16/2020"
+output: html_document
+---
+Version 1
+
+Estimation of dissolved oxygen through inverse modeling
+Based on Notes from Gaby Katul
+
+**Basic Equation:**  
+Consider an extensive stream where the flow is uniform.  The mass balance equation for oxygen is
+$$\frac{\delta VC}{\delta t} = -(\frac{\delta q_{x}}{\delta x}+\frac{\delta q_{y}}{\delta y}+\frac{\delta q_{z}}{\delta z})+S$$
+where t is time, V is the control volume, C is the pointwise oxygen concentration, q_x, q_y,and q_z are the mass fluxes in the x (longitudinal), y (lateral), and z (vertical directions) respectively (due to advective and dispersive transport), and S are all the local sources and sinks for oxygen (biotic and abiotic).  
+
+**Assumptions:**   
+Uniform flow implies that   
+$$\frac{\delta q_{x}}{\delta x}+\frac{\delta q_{y}}{\delta y}=0$$
+
+Integrate with respect to z and define fluxes per unit ground area A assuming the channel is rectangular of depth H:  
+$$\frac{\delta H\overline{C}}{\delta t} = q(H)-q(0)+ \int^{H}_{0} Sdz $$
+where $q(H)$ is the flux of oxygen with the atmosphere, $\overline{C}$ is the depth-averaged concentration, and the term  $B(t)=-q(0)+\int^{h}_{0} Sdz$ represents all production and removal of oxygen (say by plants, mircobes, fish, sediments, etc…).  
+
+**The model**  
+We seek a describtion of $B(t)$ from $\overline{C}(t)$ using
+$$\frac{\delta H\overline{C}}{\delta t} = q(H) + B(t).$$
+
+To do so, a link between $q(H)$ and $C$ is required. One model is a bulk gas transfer given by
+$$q(H)=k(C*-\overline{C}),$$
+where $C*$ is the oxygen saturation (varies with water temperature), and $k$ is the gas transfer velocity that can be inferred from a number of turbulence theories. If so, then
+$$\frac{\delta H\overline{C}}{\delta t} = k(C*-\overline{C})+B(t).$$
+
+Provided that water depth, concentration, $k$, and water temperature are available, $B(t)$ can be inferred and analyzed for different environmental conditions (e.g. as a function of light, temperature, or other chemical compounds such as N from fertilizer runoff, etc….)  
+The micro-eddy model (in the absence of bubbles) stipulates that $k = c1(Sc)^{-1/2}(\nu \epsilon)^{1/4},$ where $c1$ is a coefficient, $Sc$ is molecular Schmidt number for oxygen, $\nu$ is the kinematic viscosity of water, and $\epsilon$ is the turbulent kinetic energy dissipation rate.  
+
+In the absence of wind at the water surface, the $\epsilon = c2(u_{*})^{3}/H$, where $c2$ is a similarity coefficient and $u_{*}$ is the friction velocity.  
+Last, the friction velocity can be determined from $u_{*}=\sqrt{gHS_{0}}$, where $g$ is the gravitational acceleration and $S_{0}$ is the bed slope.
+
+
+**Revisions:**  
+Revisions can be made to include large eddies, bubbles, and winds – but my preference is to start simple.  
+
+So, with c1 and c2 determined from laboratory studies, $B(t)$ can be determined for all rivers.  
+It is emphasized that the $B(t)$ is only an overall bulk, aggregate, or effective source/sink term and must be viewed as a lumped quantity.  However, if the goal is to distinguish why different ecosystems  experience differing patterns of oxygen fluctuations, it may be sufficient – as it links measured concentration time series, water level, water temperature, and channel properties (e.g. $S_{0}$) to overall sources or sinks (or production/consumption of oxygen). 
+
+The final summary result:
+$$B(t)=\frac{d(H\overline{C})}{dt}-c1(Sc)^{-1/2}(c2\nu H^{1/2}(g S_{0})^{3/2})^{1/4}(C^{*}-\overline{C}) $$
+
+```{r setup, include=FALSE}
+library(readr)
+library(fitdistrplus)
+library(lubridate)
+
+setwd(hypox_projdir)
+
+#######################################
+#read in data and metadata
+sites <- read_csv("NHC_map/NC_synopticSamplingSites.csv")
+annual_dat <- read_csv("data/raw/2019SPsites.csv")
+annual_dat$DateTime <- with_tz(annual_dat$DateTime_UTC, tz="EST")
+annual_dat$date <- as.Date(annual_dat$DateTime, tz = "EST")
+annual_dat$year <- year(annual_dat$date)
+annual_dat<- annual_dat[annual_dat$year %in% 2017:2019,]
+annual_dat$site_year <- paste(annual_dat$site,year(annual_dat$date), sep="_")
+
+dat <- annual_dat[annual_dat$site_year=="NHC_2019",]
+```
+
+
+
+Test model on one year of data from New Hope Creek, this can be compared to the model output from Stream Metabolizer
+
+First initialize constants
+$\nu$ is the kinematic viscosity of water, which equals $\eta /\rho$, or the dynamic viscosity divided by the density of water 
+
+$Sc$ is the schmidt number for $O_{2}$, which 
+```{r include=FALSE}
+

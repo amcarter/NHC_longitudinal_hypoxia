@@ -49,16 +49,16 @@ dat$p95_va_roll <- rollmean(dat.ext$p95_va, 7)
  ggplot(dat, mapping = aes(x=doy, y=p95_va))+
    geom_ribbon(aes(ymin=p05_va, ymax=p95_va))
 
-plot(dat$doy, dat$p95_va, log="y",ylim = c(.1,500), type ="n", 
+plot(dat$doy, dat$p95_va, log="y",ylim = c(.1,200), type ="n", 
      ylab = expression(paste("Discharge (m"^3,"/s)",sep="" )), 
      xlab = "day of year", cex.main = 1,
      main = "NHC 2018 hydrograph at Blands USGS station")
 polygon(x=c(dat$doy, rev(dat$doy)),y=c((dat$p05_va), rev((dat$p95_va))), 
-        col = "lightblue", border=NA)
+        col = alpha("grey50",.3), border=NA)
 
-lines(dat$doy, dat$mean_2018, lwd = 2, col = "steelblue")
+lines(dat$doy, dat$mean_2018, lwd = 1.5, col = "grey30")
 d<- format(as.Date("2018-05-25"), '%j')
-points(d, dat[dat$doy==d,]$mean_2018, pch = 20, cex=2)
+points(d, dat[dat$doy==d,]$mean_2018, pch = 20, cex=1.5)
 
 
 baseflow_sep <- function (runoff, method = "DFM", parms = c(c = 0.925, window_size = 10, 

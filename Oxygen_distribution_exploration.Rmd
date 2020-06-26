@@ -101,6 +101,8 @@ annual_dat$DateTime_UTC <- ymd_hms(annual_dat$DateTime_UTC)
 annual_dat$DateTime <- with_tz(annual_dat$DateTime_UTC, tz="EST")
 annual_dat$date <- as.Date(annual_dat$DateTime, tz = "EST")
 annual_dat$year <- year(annual_dat$date)
+annual_dat <- annual_dat[-which(annual_dat$year==2016),]
+annual_dat <- annual_dat[-which(annual_dat$year==2020),]
 
 yearsites <- c("NHC","UNHC","Mud")
 sites$site[sites$site=="Mtrib"]<- "Mud"
@@ -137,3 +139,49 @@ mtext("frequency", side=2, outer=T)
 1. What type of distribution best describes the daily means of DO from an annual timeseries?
 2. What can we learn from DO duration curves?
 3. How do hydrologists quantify flow duration curves? Are any of these metrics meaningful for this application?
+
+
+
+```{r}
+annual_dat$site_year <- paste(annual_dat$site, annual_dat$year, sep="_")
+
+mean.tnorm<-function(mu,sd,lower,upper){
+  ##return the expectation of a truncated normal distribution
+  lower.std=(lower-mu)/sd
+  upper.std=(upper-mu)/sd
+  mean=mu+sd*(dnorm(lower.std)-dnorm(upper.std))/
+      (pnorm(upper.std)-pnorm(lower.std))
+  return(mean)
+}
+
+var.tnorm<-function(mu,sd,lower,upper){
+  ##return the variance of a truncated normal distribution
+  lower.std=(lower-mu)/sd
+  upper.std=(upper-mu)/sd
+  variance=sd^2*(1+(lower.std*dnorm(lower.std)-upper.std*dnorm(upper.std))/
+    (pnorm(upper.std)-pnorm(lower.std))-((dnorm(lower.std)-dnorm(upper.std))/
+    (pnorm(upper.std)-pnorm(lower.std)))^2)
+  return(variance)
+}
+
+
+mu <- mean.tnorm(mean(dat$persatDO, na.rm=T), sd(dat$persatDO, na.rm=T), 0, 1.3)
+var <- var.tnorm(mean(dat$persatDO, na.rm=T), sd(dat$persatDO, na.rm=T), 0, 1.3)
+
+for(n in unique(annual_dat$site_year)){
+  dat <- annual_dat[annual_dat$site_year==n,]
+  dat$persatDO <- na.approx(dat$persatDO, na.rm=T, maxgap = 12*4)
+  
+  dat <- dat[rev(order(dat$persatDO)),]
+  dat$ln_persat <- log(dat$persatDO)
+  dat$ln_rank <- log(seq(1:nrow(dat)))
+
+  fit<- nls(persatDO~(a*ln_rank+b)^(c), dat, start=list(a=1,b=1,c=.9))
+  summary(m)
+  plot(dat$ln_rank, dat$ln_persat, ylab = "log(DO %sat)", xlab=("log(rank)"))
+  abline(m$coefficients[1], m$coefficients[2], col=2)
+  
+  
+}
+
+```

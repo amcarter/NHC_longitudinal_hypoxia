@@ -5,79 +5,87 @@
 # Significant Updates: Oct 28 2018
 #          - finalized dataset as: LongitudinalSamples_2018May.csv
 
-
 library(tidyr)
-library(RColorBrewer)
-library(SDMTools)
 library(dplyr)
+library(readr)
+library(lubridate)
+library(streamMetabolizer)
+setwd(hypox_projdir)
 
 # Load Longitudinal summary datafile
 # Called CompiledLongitudinalSamples_May2018.csv, it is a sheet in 2018May_AliceNetworkSampling.xlsx
-dat <- read.csv(file = "LongitudinalSamples_2018May.csv", header = T, 
-                stringsAsFactors = FALSE, na.strings = c("", "NA"))
+dat <- read_csv(file = "data/long_survey_withNHD.csv")
 
 
-#colors <- c(,"#9CC4E4","#E9F2F9","#3A89C9","#F26C4F")
-colors <- c("#2264A8", "#6BA5D7","#CBDBE5","#8D9295","#F56146","#FFAC88","#1B325F")
-
-roads <- filter(dat, Road.Crossing == 1) %>% select(distance_m)
+roads <- filter(dat, RoadCrossing == 1) %>% select(distance_m)
 wwtp <- filter(dat, WWTP ==1) %>% select(distance_m)
 snsrs <- filter(dat, !is.na(SampleStation)) %>% select( SampleStation, distance_m)
 
 #cols <- brewer.pal(3, "Dark2")
 #shades <- c("#bbc7e0",cols[3],"#5e79b6")
 
-#hypox5 <- nrow(filter(dat,DO_mgL<5))/nrow(dat)
-#hypox2 <- nrow(filter(dat,DO_mgL<2))/nrow(dat)
+covars <- dat %>%
+  select(Time, streamSection,distance_m, slope, Latitude, Longitude, width_m, depth_m, velocity_ms, temp_C,
+         DO_pctsat, DO_mgL, Cl.mgL, SO4.mgL, NO3.N.mgL, NH4.N.mgL, Habitat)
+
+sunrise <- hms("06:04:00")
+
+covars$light_time <- hms(as.character(covars$Time))-sunrise
+covars$light_hrs <- hour(covars$light_time)+minute(covars$light_time)/60
+covars$Habitat[1:12]<- "Ri"
+covars$Habitat <- as.factor(covars$Habitat)
+boxplot(DO_pctsat~Habitat, data=covars, plot=F)
+
+#######################################
+#rescale predictor variables
+covars$slope_mkm <- covars$slope*1000
+covars$DO.upstream <- c(covars$DO_pctsat[1], covars$DO_pctsat[1:(nrow(covars)-1)])
+
+mm <- lmer(DO_pctsat~DO.upstream+velocity_ms+ slope_mkm +(1|streamSection), data=covars)
+confint(mm)
+summary(mm)
+AIC(mm)
+covars$DOpred <- 11.3085+.6971*covars$DO.upstream+42.6263*covars$velocity_ms+1.7101*covars$slope_mkm
+
+mm1 <- lmer(DO_pctsat~light_hrs+DO.upstream+velocity_ms+ slope_mkm +(1|streamSection), data=covars)
+confint(mm1)
+summary(mm1)
+AIC(mm1)
+covars$DOpred <- 7.66648+.62363*covars$DO.upstream+40.27201*covars$velocity_ms+1.45674*covars$slope_mkm+1.36948*covars$light_hrs
+covars$pred.lower <- -.512383+.5199866*covars$DO.upstream+18.3703455*covars$velocity_ms+.4244931*covars$slope_mkm+.5155646*covars$light_hrs
+covars$pred.upper <- 16.1084988+.7511535*covars$DO.upstream+62.55656*covars$velocity_ms+2.3323187*covars$slope_mkm+2.1859767*covars$light_hrs
+covars <- covars[order(covars$distance_m),]
+
+png("figures/long_DO_model.png", width=8, height = 5, units="in", res=300)
+par(mar=c(4,4,1,1), oma=c(0,0,2,0)) 
+plot(covars$distance_m/1000, covars$pred.upper, ylim = c(0,128),type="n" , xlab="distance (km)", ylab = "DO (% sat)")
+lines(covars$distance_m/1000, covars$DOpred, lwd=2, col="steelblue")
+polygon(c(covars$distance_m/1000, rev(covars$distance_m/1000)), 
+        na.approx(c(covars$pred.lower, rev(covars$pred.upper)),na.rm=F), 
+        col=alpha("steelblue",.3), border=NA)
+points(covars$distance_m/1000, covars$DO_pctsat, pch=20)
+par(new=T, oma=c(0,0,0,0))
+legend("top",legend=c("Measured DO","Modeled DO", "95% CI"),
+       fill=c(NA,NA, alpha("steelblue",.3)),
+       col=c(1,"steelblue",NA),xpd=NA,
+       border=NA,bty="n",ncol=3,
+       lty=c(NA,1,NA),
+       lwd=c(NA,2,NA),
+       pch=c(20,NA,NA))
+
+dev.off()
+covars$NH4.N.ugL<- covars$NH4.N.mgL*1000
+no3 <- lm(NO3.N.mgL~DO_pctsat, data=covars)
+nh4 <- lm(NH4.N.ugL~DO_pctsat, data=covars)
 
 
-#Create a function to generate a continuous color palette
-rbPal <- colorRampPalette(c(colors[7],"white"))
 
-#This adds a column of color values
-# based on the y collection times
-dat$Col <- rbPal(10)[as.numeric(cut(dat$Time,breaks = 10))]
+plot(covars$DO_pctsat- covars$DOpred)
+points(covars$DO_pctsat- covars$DOpred1, col=2)
 
-
-
-
-
-par(mar =c(4,5,2,1))
-plot(dat$distance_m/1000, dat$DO_mgL, pch = 20, cex.lab = 1.8,cex.axis = 1.15,
-     ylab = "DO (mg/L)", xlab = "Kilometers downstream")
-polygon(x = c(-2,30,30,-2),y = c(-2,-2,6,6), col = "grey90", border = NA )
-polygon(x = c(-2,30,30,-2),y = c(-2,-2,3,3), col = colors[1], border = NA )
-
-points(dat$distance_m/1000, dat$DO_mgL, pch = 20)
-abline(v = roads$distance_m/1000, col = colors[1],lwd = 1.7, cex = 4)
-abline(v=wwtp$distance_m/1000, col = colors[5], lwd = 2, lty = 2)
-points(snsrs$distance_m/1000, snsrs$SampleStation, pch = 20, cex = 2.5, col = colors[5])
-#text(x = snsrs$distance_m/1000, y = c(9,9,9), labels = c("A","B","C"))
-legend("topleft", c("major road crossing", "waste water"), cex = 1.2,lty = c(1,2), lwd = 2, col = colors[c(1,5)])
-
-legend("topleft", c("sensor location"), pch = c(19),col = colors[5])
-legend("topleft", c("7:00","19:00", "Time"), pch = c(19,19,19),col = colors[5])
-
-# Plot Nutrient Data
-par(mar = c(4,4,1,1), oma = c(1,1,0,0))
-plot(dat$distance_m/1000, (dat$DO_mgL), pch = 20, cex.lab = 1,cex.axis = 1,
-     col = "grey80")#, ylim = c(0,32))
-plot(dat$distance_m/1000, (dat$NO3_mgL/dat$Cl_mgL)*30, pch = 20, col = "orange",
-     ylim = c(0,10),  ylab = "concentration", xlab = "Kilometers downstream")
-w2 <- which(dat$DO_mgL<2)
-w5 <- which(dat$DO_mgL<5)
-
-abline(v=dat$distance_m[w5]/1000, col = "grey80", lwd = 2)
-abline(v=dat$distance_m[w2]/1000, col = "grey50", lwd = 2)
-
-points(dat$distance_m/1000, (dat$NO3_mgL/dat$Cl_mgL)*30, pch = 20, col = "orange")
-points(dat$distance_m/1000, (dat$SO4_mgL), pch = 20, col = "purple", ylim = c(0,60))
-points(dat$distance_m/1000, dat$NH4_mgL*30, col = "darkred", pch = 20)
-legend("topright", c("NO3", "SO4","NH4"), pch=c(20,20,20), col = c("orange","purple","darkred"), bty="n")
-
-
-plot(dat$distance_m/1000, dat$NH4_mgL/dat$NO3_mgL, ylim = c(0,0.2), pch = 20,
+plot(dat$DO_pctsat, dat$NH4.N.mgL/dat$NO3.N.mgL, ylim = c(0,0.2), pch = 20,
      ylab = "NH4/NO3")
+
 abline(v=dat$distance_m[w5]/1000, col = "grey80", lwd = 2)
 abline(v=dat$distance_m[w2]/1000, col = "grey50", lwd = 2)
 points(dat$distance_m/1000, dat$NH4_mgL/dat$NO3_mgL, ylim = c(0,0.2), pch = 20)
