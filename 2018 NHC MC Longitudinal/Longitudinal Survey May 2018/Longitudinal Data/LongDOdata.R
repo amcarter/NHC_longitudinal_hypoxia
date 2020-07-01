@@ -56,7 +56,7 @@ covars$pred.lower <- -.512383+.5199866*covars$DO.upstream+18.3703455*covars$velo
 covars$pred.upper <- 16.1084988+.7511535*covars$DO.upstream+62.55656*covars$velocity_ms+2.3323187*covars$slope_mkm+2.1859767*covars$light_hrs
 covars <- covars[order(covars$distance_m),]
 
-png("figures/long_DO_model.png", width=8, height = 5, units="in", res=300)
+png("figures/long_DO_model.png", width=6, height = 4, units="in", res=300)
 par(mar=c(4,4,1,1), oma=c(0,0,2,0)) 
 plot(covars$distance_m/1000, covars$pred.upper, ylim = c(0,128),type="n" , xlab="distance (km)", ylab = "DO (% sat)")
 lines(covars$distance_m/1000, covars$DOpred, lwd=2, col="steelblue")
@@ -74,12 +74,18 @@ legend("top",legend=c("Measured DO","Modeled DO", "95% CI"),
        pch=c(20,NA,NA))
 
 dev.off()
+
+covars <- covars[covars$distance_m<wwtp$distance_m,]
 covars$NH4.N.ugL<- covars$NH4.N.mgL*1000
-no3 <- lm(NO3.N.mgL~DO_pctsat, data=covars)
+covars$NO3.N.ugL<- covars$NO3.N.mgL*1000
+
+no3 <- lm(NO3.N.ugL~DO_pctsat, data=covars)
 nh4 <- lm(NH4.N.ugL~DO_pctsat, data=covars)
 
+summary(no3)
+summary(nh4)
 
-
+confint(no3)
 plot(covars$DO_pctsat- covars$DOpred)
 points(covars$DO_pctsat- covars$DOpred1, col=2)
 

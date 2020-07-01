@@ -7,6 +7,7 @@
 
 library(lubridate)
 library(zoo)
+library(dplyr)
 setwd(hypox_projdir)
 
 dat <- read.csv("data/raw/2019SPsites.csv", header = T, stringsAsFactors = F)
