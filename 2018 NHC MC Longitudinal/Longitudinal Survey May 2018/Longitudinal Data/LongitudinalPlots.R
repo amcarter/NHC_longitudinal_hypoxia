@@ -45,9 +45,41 @@ datMtrib <- filter(dat, streamSection != "MCU_ConfAmVi") %>% filter(streamSectio
 
 dat <- datMtrib
 
-roads <- filter(dat, Road.Crossing == 1) %>% select(distance_m)
+#roads <- filter(dat, Road.Crossing == 1) %>% select(distance_m)
 wwtp <- filter(dat, WWTP ==1) %>% select(distance_m)
 snsrs <- filter(dat, !is.na(SampleStation)) %>% select( SampleStation, distance_m, DO_mgL, DO_pctsat)
+
+
+# add error bars to figure showing the 95% range of all data collected at that site:
+setwd(hypox_projdir)
+DOdat <- read_csv("data/raw/allSites_20180706.csv")
+DO_range <- as_tibble(data.frame(SampleStation = snsrs$SampleStation,
+                       DO_max = rep(0,9),
+                       DO_min = rep(0, 9),
+                       DO.975 = rep(0, 9),
+                       DO.025 = rep(0, 9)))
+DO_range$SampleStation <- as.character(DO_range$SampleStation)
+for(i in 1:nrow(DO_range)){
+  ss <- DO_range$SampleStation[i]
+  if(ss == "Mtrib"){ss = "Mud"}
+  tmp <- DOdat %>%
+    filter(site == ss) %>%
+    summarise(min = min(persatDO, na.rm = T)*100,
+              max = max(persatDO, na.rm = T)*100,
+              q975 = quantile(persatDO, 0.975, na.rm = T)*100,
+              q025 = quantile(persatDO, 0.025, na.rm = T)*100)
+  DO_range[i,2] <- tmp$max[1]
+  DO_range[i,3] <- tmp$min[1]
+  DO_range[i,4] <- tmp$q975[1]
+  DO_range[i,5] <- tmp$q025[1]
+}
+
+DO_range <- left_join(DO_range, snsrs[,c("SampleStation","distance_m", "DO_pctsat")])
+for(i in 1:9){
+  if(DO_range$DO.975[i] < DO_range$DO_pctsat[i]){
+    DO_range$DO.975[i] <- DO_range$DO_pctsat[i]
+  }
+}
 
 # prep nutrient data
 dat.ions <- dat %>% select(datetime, distance_m, SampleStation, WWTP, DO_pctsat, DO_mgL, SpC_uScm, Cl.mgL, NO3.N.mgL, NH4.N.mgL, SO4.mgL)
@@ -60,9 +92,9 @@ dat.lower<- dat.upper[w,]
 dat.upper[w,8:11]<- NA
 
 dat.sum <- colMeans(dat.lower[,c(2,9,10,11)], na.rm=T)
+dat <- dat[order(dat$distance_m),]
 
-
-png(file="LongDOChemplot2.png", width=8, height=4.8, units="in", type="cairo", res=300)
+png(file="LongDOChemplot2_errorbars.png", width=8, height=4.8, units="in", type="cairo", res=300)
   
   par(mar =c(0,0,0,5), mgp=c(2,1,0), oma=c(6,4,1,0), mfrow = c(2,1))
   
@@ -75,6 +107,13 @@ png(file="LongDOChemplot2.png", width=8, height=4.8, units="in", type="cairo", r
   abline(v=wwtp$distance_m/1000, col = "steelblue", lwd = 2, lty = 1)
   par(new="T")
   plot(dat$distance_m/1000, dat$DO_pctsat, ylim = c(0,140),cex=0.7,pch = 21, bg = dat$color,xaxt='n', yaxt='n', ann=F)
+  arrows(DO_range$distance_m/1000, DO_range$DO.025, 
+         DO_range$distance_m/1000, DO_range$DO.975, 
+         angle = 90, length = .1)
+  arrows(DO_range$distance_m/1000, DO_range$DO.975, 
+         DO_range$distance_m/1000, DO_range$DO.025, 
+         angle = 90, length = .1)
+  
   points(snsrs$distance_m/1000, snsrs$DO_pctsat, pch = 20, cex = 1.5, col = colors[5])
   #text(x=wwtp$distance_m/1000, y=3, labels="WWTP", pos=4, offset=0.4, cex=.8)
   
@@ -87,13 +126,13 @@ png(file="LongDOChemplot2.png", width=8, height=4.8, units="in", type="cairo", r
   mtext(text = "sample time", side=4, line=1.5, outer=FALSE, cex=.7)
   mtext("DO (%sat)", 2, line=2)
   legend(0,140, legend=c("DO (%sat)    ","sensor  ","WWTP", "hypoxic"), 
-         cex=.8, bty="n",ncol=4, xpd=NA, 
+         cex=.8, bty="n",ncol=5, xpd=NA, 
          pt.cex=c(.8,1),
          border=NA,
          col=c("black",colors[5],"steelblue",NA),
-         lty=c(NA,NA,1,NA),
-         pch=c(1,19,NA,NA),
-         fill=c(NA,NA,NA,"grey90"))
+         lty=c(NA,NA,1,NA, NA),
+         pch=c(1,19,NA,NA,NA),
+         fill=c(NA,NA,NA,"grey90","white"))
   
   
   ################################################################################
@@ -106,7 +145,8 @@ png(file="LongDOChemplot2.png", width=8, height=4.8, units="in", type="cairo", r
   
   plot(dat.upper$distance_m, dat.upper$SO4.mgL, type="l", lty=SO4.col, lwd=2,
        xlim= c(0,max(dat.upper$distance_m)), ylim = c(0,10), xlab="", ylab="", xaxt="n", yaxt="n")
-  polygon(c(dat.upper$distance_m, rev(dat.upper$distance_m)), na.approx(c(dat.upper$DO_pctsat/20, rep(0, nrow(dat.upper)))),
+  polygon(na.approx(c(dat$distance_m/1000, rev(dat$distance_m/1000))),
+          na.approx(c(dat$DO_pctsat/20, rep(0, nrow(dat)))),
           border=F, col = alpha(DO.col,.4))
   lines(dat.upper$distance_m, dat.upper$NO3.N.mgL, lwd=2,lty=NO3.col)
   axis(2, at=c(0,2,4,6,8), cex.lab=.9,cex.axis =.9)
@@ -137,7 +177,7 @@ png(file="LongDOChemplot2.png", width=8, height=4.8, units="in", type="cairo", r
   
 
     
-  dev.off()
+dev.off()
 ##################################################################################
 # Plot Nutrient Data
 # Full Nutrient Concentration data

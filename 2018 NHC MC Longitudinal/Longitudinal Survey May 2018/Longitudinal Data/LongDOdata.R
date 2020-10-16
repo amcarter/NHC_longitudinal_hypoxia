@@ -10,6 +10,9 @@ library(dplyr)
 library(readr)
 library(lubridate)
 library(streamMetabolizer)
+library(lme4)
+library(zoo)
+library(scales)
 setwd(hypox_projdir)
 
 # Load Longitudinal summary datafile
@@ -21,8 +24,8 @@ roads <- filter(dat, RoadCrossing == 1) %>% select(distance_m)
 wwtp <- filter(dat, WWTP ==1) %>% select(distance_m)
 snsrs <- filter(dat, !is.na(SampleStation)) %>% select( SampleStation, distance_m)
 
-#cols <- brewer.pal(3, "Dark2")
-#shades <- c("#bbc7e0",cols[3],"#5e79b6")
+# cols <- brewer.pal(3, "Dark2")
+# shades <- c("#bbc7e0",cols[3],"#5e79b6")
 
 covars <- dat %>%
   select(Time, streamSection,distance_m, slope, Latitude, Longitude, width_m, depth_m, velocity_ms, temp_C,
@@ -57,22 +60,22 @@ covars$pred.upper <- 16.1084988+.7511535*covars$DO.upstream+62.55656*covars$velo
 covars <- covars[order(covars$distance_m),]
 
 png("figures/long_DO_model.png", width=6, height = 4, units="in", res=300)
-par(mar=c(4,4,1,1), oma=c(0,0,2,0)) 
-plot(covars$distance_m/1000, covars$pred.upper, ylim = c(0,128),type="n" , xlab="distance (km)", ylab = "DO (% sat)")
-lines(covars$distance_m/1000, covars$DOpred, lwd=2, col="steelblue")
-polygon(c(covars$distance_m/1000, rev(covars$distance_m/1000)), 
-        na.approx(c(covars$pred.lower, rev(covars$pred.upper)),na.rm=F), 
-        col=alpha("steelblue",.3), border=NA)
-points(covars$distance_m/1000, covars$DO_pctsat, pch=20)
-par(new=T, oma=c(0,0,0,0))
-legend("top",legend=c("Measured DO","Modeled DO", "95% CI"),
-       fill=c(NA,NA, alpha("steelblue",.3)),
-       col=c(1,"steelblue",NA),xpd=NA,
-       border=NA,bty="n",ncol=3,
-       lty=c(NA,1,NA),
-       lwd=c(NA,2,NA),
-       pch=c(20,NA,NA))
-
+  par(mar=c(4,4,1,1), oma=c(0,0,2,0)) 
+  plot(covars$distance_m/1000, covars$pred.upper, ylim = c(0,128),type="n" , xlab="distance (km)", ylab = "DO (% sat)")
+  lines(covars$distance_m/1000, covars$DOpred, lwd=2, col="steelblue")
+  polygon(c(covars$distance_m/1000, rev(covars$distance_m/1000)), 
+          na.approx(c(covars$pred.lower, rev(covars$pred.upper)),na.rm=F), 
+          col=alpha("steelblue",.3), border=NA)
+  points(covars$distance_m/1000, covars$DO_pctsat, pch=20)
+  par(new=T, oma=c(0,0,0,0))
+  legend("top",legend=c("Measured DO","Modeled DO", "95% CI"),
+         fill=c(NA,NA, alpha("steelblue",.3)),
+         col=c(1,"steelblue",NA),xpd=NA,
+         border=NA,bty="n",ncol=3,
+         lty=c(NA,1,NA),
+         lwd=c(NA,2,NA),
+         pch=c(20,NA,NA))
+  
 dev.off()
 
 covars <- covars[covars$distance_m<wwtp$distance_m,]

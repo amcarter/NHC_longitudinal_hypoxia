@@ -26,7 +26,8 @@ summary(dat_piedmont)
 plot(dat_piedmont$DOY, dat_piedmont$DO_persat*100, pch=21,
      col = "transparent",bg=alpha("black",.1),
      xlab = "Day of Year", ylab = "DO (% sat)", ylim = c(0,150), )
-points(dat_piedmont$DOY[dat_piedmont$month=="October"], 100*dat_piedmont$DO_persat[dat_piedmont$month=="October"],
+points(dat_piedmont$DOY[dat_piedmont$month=="October"], 
+       100*dat_piedmont$DO_persat[dat_piedmont$month=="October"],
        col = alpha("brown3",.2), pch=20, bg="red")
 boxplot(DO_persat*100 ~month, data=dat_piedmont, ylim = c(0,150), outline=FALSE,
         xlab = "Month", ylab = "DO (% sat)")
@@ -45,13 +46,15 @@ seasonal <-dat_piedmont %>% group_by(month)%>%
             n_hypox =length(which(DO_persat < .5))/length(month)*100)
 
 slope.75<-quantile(dat_piedmont$slope, .75, na.rm=T)
-seasonal.highslope <-dat_piedmont[dat_piedmont$slope>slope.75,] %>% group_by(month)%>%
+seasonal.highslope <-dat_piedmont[dat_piedmont$slope>slope.75,] %>% 
+  group_by(month) %>%
   summarize(DO.persat.mean=mean(DO_persat, na.rm=T), 
             DO.mgl.mean = mean(DO_mgl, na.rm=T),
             n_hypox =length(which(DO_persat < .5))/length(month)*100)
 
 slope.25 <- quantile(dat_piedmont$slope, .25, na.rm=T)
-seasonal.lowslope <-dat_piedmont[dat_piedmont$slope<slope.25,] %>% group_by(month)%>%
+seasonal.lowslope <- dat_piedmont[dat_piedmont$slope<slope.25,] %>% 
+  group_by(month) %>%
   summarize(DO.persat.mean=mean(DO_persat, na.rm=T), 
             DO.mgl.mean = mean(DO_mgl, na.rm=T),
             n_hypox =length(which(DO_persat < .5))/length(month)*100)
@@ -61,8 +64,8 @@ png("figures/WQP_DO_seasonal.png", width=5, height=4, units="in", res=300)
 
 par(mar = c(3,4,1,4), oma = c(0,0,3,0))
 
-boxplot(DO_persat*100 ~month, data=dat_piedmont, ylim = c(0,150), outline=FALSE,
-        xlab = "", ylab = "", cex.axis=.8)
+boxplot(DO_persat*100 ~month, data=dat_piedmont, ylim = c(0,150), 
+        outline=FALSE, xlab = "", ylab = "", cex.axis=.8)
 mtext("DO (% sat)", side=2, line=-2, outer=T, adj=.55)
 mtext("n=145175",side=3, line=-1.6, adj=.9)
 mtext("1966-2020", side=3, line=-1.6, adj=.1)
@@ -70,14 +73,20 @@ par(new = T)
 
 
 plot(seasonal$month, rep(-1000,12), ylim = c(0,25), axes=F, xlab="", ylab="")
-polygon(c(seq(1,12),rev(seq(1,12))), c(seasonal.lowslope$n_hypox[1:12], rep(0,12)), col = alpha("black", .2), border=F)
-polygon(c(seq(1,12),rev(seq(1,12))), c(seasonal.highslope$n_hypox[1:12], rep(0,12)), col = alpha("black", .4), border=F)
+polygon(c(seq(1,12),rev(seq(1,12))), 
+        c(seasonal.lowslope$n_hypox[1:12], rep(0,12)), 
+        col = alpha("black", .2), border=F)
+polygon(c(seq(1,12),rev(seq(1,12))), 
+        c(seasonal.highslope$n_hypox[1:12], rep(0,12)), 
+        col = alpha("black", .4), border=F)
 axis(4, cex.axis=.8)
 mtext("Pr(DO % sat < 50)", side=4, line=-2, outer=T, adj=.55)
 par(new=T, oma=c(0,0,0,0))
 
-legend("top", legend=c(paste("Lower 25% of slope\n     (<",round(slope.25*1000, 1),"m/km)"),
-                       paste("Upper 25% of slope\n     (>",round(slope.75*1000, 1),"m/km)")), 
+legend("top", legend=c(paste("Lower 25% of slope\n     (<", 
+                             round(slope.25*1000, 1),"m/km)"),
+                       paste("Upper 25% of slope\n     (>",
+                             round(slope.75*1000, 1),"m/km)")), 
        cex=.8, bty="n",ncol=2, xpd=NA,
        fill=c(alpha("black",.2),alpha("black",.6)),
        border=c(NA,NA))
@@ -104,7 +113,8 @@ abline(.7973, 12.66, col=2)
 dat_piedmont_ordered <- dat_piedmont[order(dat_piedmont$slope),]
 dat_piedmont_ordered <- dat_piedmont_ordered[which(!is.na(dat_piedmont_ordered$slope)),]
 dat_piedmont_ordered <- dat_piedmont_ordered[which(!is.na(dat_piedmont_ordered$hypox)),]
-dat_piedmont_ordered <- dat_piedmont_ordered[dat_piedmont_ordered$month %in% c("Jul","Aug","Sep"),]
+dat_piedmont_ordered <- dat_piedmont_ordered[dat_piedmont_ordered$month %in% 
+                                               c("Jul","Aug","Sep"),]
 
 l <- nrow(dat_piedmont_ordered)
 nbins <- 10
@@ -115,8 +125,10 @@ avg_hpx <- data.frame(slope=tapply(dat_piedmont_ordered$slope,bins, mean),
                       hpx.sd=tapply(dat_piedmont_ordered$hypox,bins, sd),
                       hpx.975=tapply(dat_piedmont_ordered$hypox,bins, quantile, .975),
                       DO=tapply(dat_piedmont_ordered$DO_persat,bins, mean))
-plot(avg_hpx$slope, avg_hpx$DO, ylim = c(0,1.2), type="b", lwd=2, xlim = c(0,0.01))                      
-polygon(c(avg_hpx$slope, rev(avg_hpx$slope)), c(avg_hpx$hpx+avg_hpx$hpx.sd, rev(avg_hpx$hpx-avg_hpx$hpx.sd)), 
+plot(avg_hpx$slope, avg_hpx$DO, ylim = c(0,1.2), 
+     type="b", lwd=2, xlim = c(0,0.01))                      
+polygon(c(avg_hpx$slope, rev(avg_hpx$slope)), 
+        c(avg_hpx$hpx+avg_hpx$hpx.sd, rev(avg_hpx$hpx-avg_hpx$hpx.sd)), 
         col=alpha("black", .3), border=NA)
                       
 
@@ -128,9 +140,10 @@ out<- data.frame(slope=cutseq[1:10],
                  hpx.sd=tapply(tmp$hypox, bins, sd, na.rm=T))
 
 plot(out$slope, out$hpx, ylim = c(0,.5),type="l", lwd=2)
-polygon(c(out$slope, rev(out$slope)), c(rep(0,10),rev(out$hpx+out$hpx.sd)), col=alpha("black", .3), border=NA)
+polygon(c(out$slope, rev(out$slope)), c(rep(0,10),rev(out$hpx+out$hpx.sd)), 
+        col=alpha("black", .3), border=NA)
 
-#################################################################
+################################################################################
 
 w<- which(dat_piedmont$year%in%c(1966,1967,1968,2020))
 dat_piedmont <- dat_piedmont[-w,]
@@ -144,14 +157,17 @@ mtext("1969-2019", side=1, line=-1.6, adj=.1)
 abline(h=50, col="grey50")
 
 
-###################################################################################################
+################################################################################
 # Change in DO distribution over time
 tmp <- dat_piedmont%>% group_by(year, month)%>%
   summarise(DO_persat_mean =mean(DO_persat, na.rm=T))
-plot(tmp$year[tmp$month=="Jul"], tmp$DO_persat_mean[tmp$month=="Jul"], type="l",lty=1)
+plot(tmp$year[tmp$month=="Jul"], tmp$DO_persat_mean[tmp$month=="Jul"], 
+     type="l",lty=1)
 lines(tmp$year[tmp$month=="Aug"], tmp$DO_persat_mean[tmp$month=="Aug"], lty=2)
 lines(tmp$year[tmp$month=="Oct"], tmp$DO_persat_mean[tmp$month=="Oct"], lty=3)
-plot(tmp$year[tmp$month=="Jul"], tmp$DO_persat_mean[tmp$month=="Jul"]/tmp$DO_persat_mean[tmp$month=="Oct"], type="l")
+plot(tmp$year[tmp$month=="Jul"], 
+     tmp$DO_persat_mean[tmp$month=="Jul"]/tmp$DO_persat_mean[tmp$month=="Oct"], 
+     type="l")
 
 
 # Violin Plots
@@ -192,9 +208,11 @@ par(new=T)
 hist(dat_piedmont$DO_persat[dat_piedmont$month=="October"], xlim = c(0,1.5), 
      ylim = c(0,36000), col = "brown3", axes=F)
 
-plot(dat_piedmont$DateTime_UTC, dat_piedmont$DO_persat, col = alpha("black",0.2), pch=19, ylim = c(0,1.5))
+plot(dat_piedmont$DateTime_UTC, dat_piedmont$DO_persat, 
+     col = alpha("black",0.2), pch=19, ylim = c(0,1.5))
 points(dat_piedmont$DateTime_UTC[dat_piedmont$month=="October"],
-       dat_piedmont$DO_persat[dat_piedmont$month=="October"],pch=19, col=alpha("brown3",.6) )
+       dat_piedmont$DO_persat[dat_piedmont$month=="October"],
+       pch=19, col=alpha("brown3",.6))
 plot(annual$year, annual$DO_persat.mean, type="l", ylim = c(0,1.5))
 
 
@@ -210,7 +228,8 @@ ncSummary <- DOdat %>%
 
 col_types <- c("darkblue","dodgerblue","green4","gold1","orange","brown","red")
 leg_vals <- unique(as.numeric(quantile(ncSummary$max,
-                                       probs=c(0,0.01,0.1,0.25,0.5,0.75,0.9,.99,1), na.rm=TRUE)))
+                                       probs=c(0,0.01,0.1,0.25,0.5,0.75,0.9,.99,1), 
+                                       na.rm=TRUE)))
 pal = colorBin(col_types, ncSummary$max, bins = leg_vals)
 rad <-3*seq(1,4,length.out = 16)
 ncSummary$sizes <- rad[as.numeric(cut(ncSummary$count, breaks=16))]
