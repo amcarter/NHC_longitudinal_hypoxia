@@ -6,26 +6,29 @@
 #          - finalized dataset as: LongitudinalSamples_2018May.csv
 
 
-library(tidyr)
+library(tidyverse)
 library(lubridate)
 #library(RColorBrewer)
 #library(SDMTools)
 library(dplyr)
 library(zoo)
+library(plotfunctions)
 
 # Load Longitudinal summary datafile
-# Called CompiledLongitudinalSamples_May2018.csv, it is a sheet in 2018May_AliceNetworkSampling.xlsx
+# Called CompiledLongitudinalSamples_May2018.csv, 
+# it is a sheet in 2018May_AliceNetworkSampling.xlsx
 dat <- read.csv(file = "LongitudinalSamples_2018May.csv", header = T, 
                 stringsAsFactors = FALSE, na.strings = c("", "NA"))
-dat<- dplyr::rename(dat, streamSection=colnames(dat)[1])
+dat <- dplyr::rename(dat, streamSection=colnames(dat)[1])
 
 # Make sure dates and times are properly formatted
-dat$datetime<- mdy_hm(paste(dat$Date,dat$Time, sep=" "))
-dat$Time<- as.POSIXct(dat$Time, format = "%H:%M")
+dat$datetime <- mdy_hm(paste(dat$Date,dat$Time, sep=" "))
+dat$Time <- as.POSIXct(dat$Time, format = "%H:%M")
 dat$Date <- mdy(dat$Date)
 
 
-colors <- c("#2264A8", "#6BA5D7","#CBDBE5","#8D9295","#F56146","#FFAC88","#1B325F")
+colors <- c("#2264A8", "#6BA5D7","#CBDBE5","#8D9295",
+            "#F56146","#FFAC88","#1B325F")
 
 
 #Create a function to generate a continuous color palette
@@ -38,16 +41,20 @@ minTime <- as.POSIXct("07:23", format="%H:%M")
 maxTime <- as.POSIXct("19:00", format="%H:%M")
 
 # Subset dat based on which sections you want to plot.
-# MC_trib follows the path up to the headwaters of mud tributary while MC_751 and MCU_ConfAmVi follow a trib through american village
+# MC_trib follows the path up to the headwaters of mud tributary while 
+# MC_751 and MCU_ConfAmVi follow a trib through american village
 
 dat751 <- filter(dat, streamSection != "MC_trib")
-datMtrib <- filter(dat, streamSection != "MCU_ConfAmVi") %>% filter(streamSection != "MC_751")
+datMtrib <- filter(dat, streamSection != "MCU_ConfAmVi") %>% 
+  filter(streamSection != "MC_751")
 
 dat <- datMtrib
 
 #roads <- filter(dat, Road.Crossing == 1) %>% select(distance_m)
-wwtp <- filter(dat, WWTP ==1) %>% select(distance_m)
-snsrs <- filter(dat, !is.na(SampleStation)) %>% select( SampleStation, distance_m, DO_mgL, DO_pctsat)
+wwtp <- filter(dat, WWTP ==1) %>% 
+  select(distance_m)
+snsrs <- filter(dat, !is.na(SampleStation)) %>% 
+  select( SampleStation, distance_m, DO_mgL, DO_pctsat)
 
 
 # add error bars to figure showing the 95% range of all data collected at that site:
@@ -75,14 +82,17 @@ for(i in 1:nrow(DO_range)){
 }
 
 DO_range <- left_join(DO_range, snsrs[,c("SampleStation","distance_m", "DO_pctsat")])
-for(i in 1:9){
-  if(DO_range$DO.975[i] < DO_range$DO_pctsat[i]){
-    DO_range$DO.975[i] <- DO_range$DO_pctsat[i]
-  }
-}
+# for(i in 1:9){
+#   if(DO_range$DO.975[i] < DO_range$DO_pctsat[i]){
+#     DO_range$DO.975[i] <- DO_range$DO_pctsat[i]
+#   }
+# }
 
 # prep nutrient data
-dat.ions <- dat %>% select(datetime, distance_m, SampleStation, WWTP, DO_pctsat, DO_mgL, SpC_uScm, Cl.mgL, NO3.N.mgL, NH4.N.mgL, SO4.mgL)
+dat.ions <- dat %>% 
+  select(datetime, distance_m, SampleStation, WWTP, 
+         DO_pctsat, DO_mgL, SpC_uScm, 
+         Cl.mgL, NO3.N.mgL, NH4.N.mgL, SO4.mgL)
 dat.ions <- dat.ions[order(dat.ions$distance_m),]
 dat.ions$distance_m <- dat.ions$distance_m/1000
 dat.upper<- dat.ions[which(!is.na(dat.ions$Cl.mgL)),]
@@ -94,45 +104,52 @@ dat.upper[w,8:11]<- NA
 dat.sum <- colMeans(dat.lower[,c(2,9,10,11)], na.rm=T)
 dat <- dat[order(dat$distance_m),]
 
-png(file="LongDOChemplot2_errorbars.png", width=8, height=4.8, units="in", type="cairo", res=300)
-  
+### Prep other driver variables from LME model
+drivers <- read_csv(file = "data/covars.csv")
+
+png(file="LongDOChemplot2_errorbars.png",
+    width=8, height=4.8, units="in", type="cairo", res=300)
   par(mar =c(0,0,0,5), mgp=c(2,1,0), oma=c(6,4,1,0), mfrow = c(2,1))
   
-  
-  plot(dat$distance_m/1000, dat$DO_pctsat, pch = 21,cex=0.7,yaxt="n",xaxt="n", ylim = c(0,140))
-  axis(2, at=c(0,25,50,75,100), cex.lab=.9,cex.axis =.9)
+  plot(dat$distance_m/1000, dat$DO_pctsat, pch = 21,
+       cex=0.7, yaxt="n", xaxt="n", ylim = c(0,140), xlim = c(0,20.6))
+  axis(2, at=c(0,25,50,75,100), cex.lab=.8,cex.axis =.7)
   polygon(x = c(-2,30,30,-2),y = c(-10,-10,50,50), col = "grey90", border = NA )
   #polygon(x = c(-2,30,30,-2),y = c(-2,-2,3,3), col = "grey70", border = NA )
   #abline(v = roads$distance_m/1000, col =' black',lwd = 1.5, cex = 4, lty = 2)
+  
   abline(v=wwtp$distance_m/1000, col = "steelblue", lwd = 2, lty = 1)
   par(new="T")
-  plot(dat$distance_m/1000, dat$DO_pctsat, ylim = c(0,140),cex=0.7,pch = 21, bg = dat$color,xaxt='n', yaxt='n', ann=F)
+  plot(dat$distance_m/1000, dat$DO_pctsat, ylim = c(0,140), xlim = c(0,20.6),
+       cex=0.7,pch = 21, bg = dat$color,xaxt='n', yaxt='n', ann=F)
   arrows(DO_range$distance_m/1000, DO_range$DO.025, 
          DO_range$distance_m/1000, DO_range$DO.975, 
          angle = 90, length = .1)
   arrows(DO_range$distance_m/1000, DO_range$DO.975, 
          DO_range$distance_m/1000, DO_range$DO.025, 
          angle = 90, length = .1)
-  
-  points(snsrs$distance_m/1000, snsrs$DO_pctsat, pch = 20, cex = 1.5, col = colors[5])
+  arrows(13.4 , 125, y1=135, angle = 90, length = .06)
+  arrows(13.4 , 135, y1=125, angle = 90, length = .06)
+  #points(snsrs$distance_m/1000, snsrs$DO_pctsat, pch = 20, cex = 1.5, col = colors[5])
   #text(x=wwtp$distance_m/1000, y=3, labels="WWTP", pos=4, offset=0.4, cex=.8)
   
-  gradientLegend(valRange=c(0,1),
-                 color = rbPal(10), pos = c(21.5, 5,22.2,135), side = 4,length = 0.5, depth = 0.03, inside = FALSE, 
-                 coords = TRUE, pos.num = NULL, n.seg =0, border.col = "black", dec = NULL,
+  plotfunctions::gradientLegend(valRange=c(0,1),
+                 color = rbPal(10), pos = c(21.5, 5,22.2,135), side = 4,
+                 length = 0.5, depth = 0.03, inside = FALSE, coords = TRUE, 
+                 pos.num = NULL, n.seg =0, border.col = "black", dec = NULL,
                  fit.margin = FALSE)
   text(x=22.2, y=7, labels="7:00", pos=4, offset=0.2, xpd=NA, cex=.7)
   text(x=22.2, y=131, labels="19:00", pos=4, offset=0.1, xpd=NA, cex=.7)
   mtext(text = "sample time", side=4, line=1.5, outer=FALSE, cex=.7)
   mtext("DO (%sat)", 2, line=2)
-  legend(0,140, legend=c("DO (%sat)    ","sensor  ","WWTP", "hypoxic"), 
-         cex=.8, bty="n",ncol=5, xpd=NA, 
+  legend(-1,145, legend=c("DO (%sat)","WWTP", "hypoxic","sensor range"), 
+         cex=.8, bty="n",ncol=6, xpd=NA, 
          pt.cex=c(.8,1),
          border=NA,
-         col=c("black",colors[5],"steelblue",NA),
-         lty=c(NA,NA,1,NA, NA),
-         pch=c(1,19,NA,NA,NA),
-         fill=c(NA,NA,NA,"grey90","white"))
+         col=c("black","steelblue",NA,NA),
+         lty=c(NA,1,NA, NA),
+         pch=c(1,NA,NA,NA),
+         fill=c(NA,NA,"grey90",NA))
   
   
   ################################################################################
@@ -144,12 +161,12 @@ png(file="LongDOChemplot2_errorbars.png", width=8, height=4.8, units="in", type=
   SO4.col <-1
   
   plot(dat.upper$distance_m, dat.upper$SO4.mgL, type="l", lty=SO4.col, lwd=2,
-       xlim= c(0,max(dat.upper$distance_m)), ylim = c(0,10), xlab="", ylab="", xaxt="n", yaxt="n")
+       xlim= c(0,20.6), ylim = c(0,10), xlab="", ylab="", xaxt="n", yaxt="n")
   polygon(na.approx(c(dat$distance_m/1000, rev(dat$distance_m/1000))),
           na.approx(c(dat$DO_pctsat/20, rep(0, nrow(dat)))),
           border=F, col = alpha(DO.col,.4))
-  lines(dat.upper$distance_m, dat.upper$NO3.N.mgL, lwd=2,lty=NO3.col)
-  axis(2, at=c(0,2,4,6,8), cex.lab=.9,cex.axis =.9)
+  lines(dat.upper$distance_m, dat.upper$NO3.N.mgL, lwd=2, lty=NO3.col)
+  axis(2, at=c(0,2,4,6,8), cex.lab=.9,cex.axis =.7)
   mtext("NO3-N, SO4, (mg/L)", side=2, line=2)
   
   text(19.2, 4.5, "NH4 = 0.05 mg/L",  cex=.8, pos=1)
@@ -160,13 +177,13 @@ png(file="LongDOChemplot2_errorbars.png", width=8, height=4.8, units="in", type=
   par(new=T)
   
   plot(dat.upper$distance_m, dat.upper$NH4.N.mgL, type="l", lwd=2, lty =NH4.col,
-       xaxt="n", yaxt="n", ylab="", xlab="", ylim = c(0,.2))
-  axis(4, at=c(0,.06,.12,.18), cex.lab=.9,cex.axis =.9)
+       xaxt="n", yaxt="n", ylab="", xlab="", ylim = c(0,.2), xlim= c(0,20.6))
+  axis(4, at=c(0,.06,.12,.18), cex.lab=.8, cex.axis =.7)
   
   abline(v=wwtp$distance_m/1000, col="steelblue", lwd=2)
   mtext("NH4-N, (mg/L)", side=4, line=2)
-  axis(1, at=c(0,4,8,12,16,20), cex.lab=.9)
-  mtext("Distance downstream (km)", side=1, line=2)
+  #axis(1, at=c(0,4,8,12,16,20), cex.lab=.9)
+  #mtext("Distance downstream (km)", side=1, line=2)
   legend(0,.2, legend=c("DO (%sat)","SO4","NO3-N", "NH4-N"), 
          cex=.8, bty="n",ncol=4, xpd=NA, 
          pt.cex=1.2,
@@ -174,10 +191,45 @@ png(file="LongDOChemplot2_errorbars.png", width=8, height=4.8, units="in", type=
          border=NA,
          col=c("white","black","black","black"),
          lty=c(NA,1,2,3))
+  axis(1, at=c(0,4,8,12,16,20), cex.lab=.8, cex.axis =.8)
+  mtext("Distance downstream (km)", side=1, line=2.4)
+dev.off()
+  ################################################################################
+  # LME model parameters
   
-
+  drivers <- drivers[order(drivers$distance_m),] %>%
+    filter(streamSection != "MC_trib")
+png(file="Supplementary_LongDO_plot.png", 
+    width=3.66, height=3.3, units="in", type="cairo", res=300)
+  par(mar =c(0,0,0,5), mgp = c(2,1,0), oma=c(6,4,3,0), mfrow = c(3,1))
+  plot(dat$distance_m/1000, dat$DO_pctsat, ylim = c(0,120), xlim = c(0,20.6),
+       cex = .6,pch = 21, bg = dat$color,xaxt='n', ann=F, cex.axis = .6, cex.lab = .6)
+  mtext("DO (%sat)", 2, line=2.2, cex = .6)
+  
+  plotfunctions::gradientLegend(valRange=c(0,1),
+                 color = rbPal(10), pos = c(21.5, 5,22.2,115), side = 4,
+                 length = 0.5, depth = 0.02, inside = FALSE, coords = TRUE, 
+                 pos.num = NULL, n.seg =0, border.col = "black", dec = NULL,
+                 fit.margin = FALSE)
+  text(x=22.2, y=7, labels="7:00", pos=4, offset=0.2, xpd=NA, cex=.6)
+  text(x=22.2, y=111, labels="19:00", pos=4, offset=0.1, xpd=NA, cex=.6)
+  mtext(text = "sample time", side=4, line=2.5, outer=FALSE, cex=.5)
+  
+  # abline(v=wwtp$distance_m/1000, col="steelblue", lwd=2)
+  plot(drivers$distance_m/1000, drivers$velocity_ms, pch = 19, 
+       xlim= c(0,20.6), xlab="", ylab="", xaxt="n", cex = .6, cex.axis = .6, cex.lab = .6)
+  mtext("velocity (m/s)",2,2.2, cex = .6)
+  # abline(v=wwtp$distance_m/1000, col="steelblue", lwd=2)
+  plot(drivers$distance_m/1000, drivers$slope_mkm, pch = 19, cex.axis = .6, cex.lab = .6, 
+       xlim= c(0,20.6),ylim = c(0,13), xlab="", ylab="", xaxt="n", cex = .6)
+  mtext("slope (m/km)",2,2.2, cex = .6)
+  # abline(v=wwtp$distance_m/1000, col="steelblue", lwd=2)
+  axis(1, at=c(0,4,8,12,16,20), cex.lab=.6, cex.axis = .6)
+  mtext("Distance downstream (km)", side=1, line=2.4, cex = .7)
     
 dev.off()
+
+    
 ##################################################################################
 # Plot Nutrient Data
 # Full Nutrient Concentration data

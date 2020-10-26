@@ -1,6 +1,9 @@
-### Code to read in and plot data from longitudinal DO sampling in May 2018
+### Code for linear mixed effects model longitudinal DO sampling in May 2018
 # Created by Alice Carter
 # Nov 12 2018
+
+# mad updates
+# Oct 22 2020
 
 # Significant Updates: Oct 28 2018
 #          - finalized dataset as: LongitudinalSamples_2018May.csv
@@ -13,22 +16,27 @@ library(streamMetabolizer)
 library(lme4)
 library(zoo)
 library(scales)
+#install.packages("lmerTest")
+library(lmerTest)
 setwd(hypox_projdir)
 
 # Load Longitudinal summary datafile
 # Called CompiledLongitudinalSamples_May2018.csv, it is a sheet in 2018May_AliceNetworkSampling.xlsx
 dat <- read_csv(file = "data/long_survey_withNHD.csv")
 
-
-roads <- filter(dat, RoadCrossing == 1) %>% select(distance_m)
-wwtp <- filter(dat, WWTP ==1) %>% select(distance_m)
-snsrs <- filter(dat, !is.na(SampleStation)) %>% select( SampleStation, distance_m)
+roads <- filter(dat, RoadCrossing == 1) %>% 
+  select(distance_m)
+wwtp <- filter(dat, WWTP ==1) %>% 
+  select(distance_m)
+snsrs <- filter(dat, !is.na(SampleStation)) %>% 
+  select( SampleStation, distance_m)
 
 # cols <- brewer.pal(3, "Dark2")
 # shades <- c("#bbc7e0",cols[3],"#5e79b6")
 
 covars <- dat %>%
-  select(Time, streamSection,distance_m, slope, Latitude, Longitude, width_m, depth_m, velocity_ms, temp_C,
+  select(Time, streamSection,distance_m, slope, Latitude, Longitude, 
+         width_m, depth_m, velocity_ms, temp_C,
          DO_pctsat, DO_mgL, Cl.mgL, SO4.mgL, NO3.N.mgL, NH4.N.mgL, Habitat)
 
 sunrise <- hms("06:04:00")
@@ -42,41 +50,171 @@ boxplot(DO_pctsat~Habitat, data=covars, plot=F)
 #######################################
 #rescale predictor variables
 covars$slope_mkm <- covars$slope*1000
-covars$DO.upstream <- c(covars$DO_pctsat[1], covars$DO_pctsat[1:(nrow(covars)-1)])
+covars$DO.upstream <- c(covars$DO_pctsat[1], 
+                        covars$DO_pctsat[1:(nrow(covars)-1)])
 
-mm <- lmer(DO_pctsat~DO.upstream+velocity_ms+ slope_mkm +(1|streamSection), data=covars)
-confint(mm)
-summary(mm)
-AIC(mm)
-covars$DOpred <- 11.3085+.6971*covars$DO.upstream+42.6263*covars$velocity_ms+1.7101*covars$slope_mkm
+covars1 <- covars %>% filter(!is.na(Time)) %>%
+  select(streamSection, distance_m, slope_mkm,
+         width_m, depth_m,velocity_ms, temp_C, DO.upstream, 
+         DO_pctsat, DO_mgL, light_hrs) %>%
+  filter(streamSection != "MC_trib") %>%
+  filter(!is.na(DO_pctsat))  
+  
+covars1 <- covars1[order(covars1$distance_m),]
+covars1 
+# write_csv(covars1, "data/covars.csv")
+# plot hists of covars to see if they need to be rescaled
+par(mfrow = c(3,3))
+hist(covars1$velocity_ms)
+hist(covars1$DO.upstream)
+hist(covars1$slope_mkm)
+hist(covars1$width_m)
+hist(covars1$depth_m)
+hist(covars1$temp_C)
+hist(covars1$light_hrs)
+covars1$velocity_ms_x10 <- covars1$velocity_ms*10
 
-mm1 <- lmer(DO_pctsat~light_hrs+DO.upstream+velocity_ms+ slope_mkm +(1|streamSection), data=covars)
+mm <- lmer(DO_pctsat ~ DO.upstream + velocity_ms_x10 + slope_mkm + 
+             width_m + depth_m + temp_C + light_hrs +
+             (1|streamSection), data=covars1)
+
+mm_step <- lmerTest::step(mm)
+steps_r <- mm_step$random %>%
+  as.tibble() %>%
+  mutate(predictor = rownames(mm_step$random),
+         effect = "random")
+  
+steps_f <- mm_step$fixed %>%
+  as.tibble() %>%
+  mutate(predictor = rownames(mm_step$fixed),
+         effect = "fixed")
+
+bind_rows(steps_r, steps_f) %>%
+  write_csv(path = "data/Satterthwaite_DFmethod_lme_steps.csv")
+
+mm1 <- get_model(mm_step)
 confint(mm1)
-summary(mm1)
-AIC(mm1)
-covars$DOpred <- 7.66648+.62363*covars$DO.upstream+40.27201*covars$velocity_ms+1.45674*covars$slope_mkm+1.36948*covars$light_hrs
-covars$pred.lower <- -.512383+.5199866*covars$DO.upstream+18.3703455*covars$velocity_ms+.4244931*covars$slope_mkm+.5155646*covars$light_hrs
-covars$pred.upper <- 16.1084988+.7511535*covars$DO.upstream+62.55656*covars$velocity_ms+2.3323187*covars$slope_mkm+2.1859767*covars$light_hrs
-covars <- covars[order(covars$distance_m),]
+sections <- ranef(mm1)%>%
+  as_tibble() %>%
+  mutate(streamSection = as.character(grp)) %>%
+  select(streamSection, intercept = condval) %>%
+  right_join(covars1, by = 'streamSection')
 
-png("figures/long_DO_model.png", width=6, height = 4, units="in", res=300)
-  par(mar=c(4,4,1,1), oma=c(0,0,2,0)) 
-  plot(covars$distance_m/1000, covars$pred.upper, ylim = c(0,128),type="n" , xlab="distance (km)", ylab = "DO (% sat)")
+summary(mm1)$coefficients %>%
+  as.tibble() %>%
+  mutate(predictor = rownames(summary(mm1)$coefficients),
+         r2_cond = r.squaredGLMM(mm1)[2],
+         AIC = AIC(mm1)) %>%
+  write_csv(path = "data/lme_coefficients.csv")
+mm_coeff <- summary(mm1)$coefficients[, 1]
+
+covars1$DOpred <- mm_coeff[1] + 
+  mm_coeff[2] * covars1$DO.upstream +
+  mm_coeff[3] * covars1$velocity_ms_x10 + 
+  mm_coeff[4] * covars1$slope_mkm +
+  mm_coeff[5] * covars1$light_hrs +
+  sections$intercept
+
+mm_coeff <- confint(mm1)[3:7, 1]
+
+covars1$DOpred.lower <- mm_coeff[1] + 
+  mm_coeff[2] * covars1$DO.upstream +
+  mm_coeff[3] * covars1$velocity_ms + 
+  mm_coeff[4] * covars1$slope_mkm +
+  mm_coeff[5] * covars1$light_hrs +
+  sections$intercept
+
+mm_coeff <- confint(mm1)[3:7, 2]
+
+covars1$DOpred.upper <- mm_coeff[1] + 
+  mm_coeff[2] * covars1$DO.upstream +
+  mm_coeff[3] * covars1$velocity_ms + 
+  mm_coeff[4] * covars1$slope_mkm +
+  mm_coeff[5] * covars1$light_hrs +
+  sections$intercept
+
+## write up paragraph about selection process (AIC?)
+#make table of values for supplementary 
+# make 3rd plot panel with relevant variables (slope, velocity)
+
+AIC(mm1)
+
+
+# mm1 <- lmer(DO_pctsat~light_hrs+DO.upstream+velocity_ms+ slope_mkm +(1|streamSection), data=covars)
+# summary(mm1)
+# AIC(mm1)
+# covars$DOpred <- 7.66648+.62363*covars$DO.upstream+40.27201*covars$velocity_ms+1.45674*covars$slope_mkm+1.36948*covars$light_hrs
+# covars$pred.lower <- -.512383+.5199866*covars$DO.upstream+18.3703455*covars$velocity_ms+.4244931*covars$slope_mkm+.5155646*covars$light_hrs
+# covars$pred.upper <- 16.1084988+.7511535*covars$DO.upstream+62.55656*covars$velocity_ms+2.3323187*covars$slope_mkm+2.1859767*covars$light_hrs
+# covars <- covars[order(covars$distance_m),]
+covars <- covars1
+dev.off()
+ax_size <- .9 
+leg_size <- 1
+png("figures/long_DO_model_drivers.png", width=7, height = 7, units="in", res=300)
+  par(mar =c(0,0,0,0), mgp = c(2,1,0), oma=c(4,4,2,2))
+  m<- matrix(c(1,1,2,3,4), ncol = 1)
+  layout(m)
+  # par(mar=c(4,4,1,1), oma=c(2,0,2,0)) 
+  plot(covars$distance_m/1000, covars$DOpred.upper, ylim = c(0,128), type="n",
+       xlab="", ylab = "", xaxt = "n", cex.lab = ax_size, cex.axis = ax_size)
+  mtext("DO (% sat)", 2, 2, cex = ax_size)
   lines(covars$distance_m/1000, covars$DOpred, lwd=2, col="steelblue")
   polygon(c(covars$distance_m/1000, rev(covars$distance_m/1000)), 
-          na.approx(c(covars$pred.lower, rev(covars$pred.upper)),na.rm=F), 
+          na.approx(c(covars$DOpred.lower, rev(covars$DOpred.upper)),na.rm=F), 
           col=alpha("steelblue",.3), border=NA)
-  points(covars$distance_m/1000, covars$DO_pctsat, pch=20)
-  par(new=T, oma=c(0,0,0,0))
+  points(covars$distance_m/1000, covars$DO_pctsat, pch=19, cex=1)
+  # par(new=T, oma=c(0,0,.5,0))
   legend("top",legend=c("Measured DO","Modeled DO", "95% CI"),
          fill=c(NA,NA, alpha("steelblue",.3)),
          col=c(1,"steelblue",NA),xpd=NA,
          border=NA,bty="n",ncol=3,
          lty=c(NA,1,NA),
          lwd=c(NA,2,NA),
-         pch=c(20,NA,NA))
+         pch=c(20,NA,NA),
+         cex = leg_size)
+
+  plot(covars$distance_m/1000, covars$velocity_ms,
+       xlab="", ylab = "", xaxt = "n", pch = 19,
+       cex.lab = ax_size, cex.axis = ax_size)
+  mtext("velocity (m/s)", 2, 2, cex = ax_size)
+  plot(covars$distance_m/1000, covars$slope_mkm, ylim = c(0,13),
+       xlab="", ylab = "", xaxt = "n", pch = 19,
+       cex.lab = ax_size, cex.axis = ax_size)
+  mtext("slope (m/km)", 2, 2, cex = ax_size)
+  plot(covars$distance_m/1000, covars$light_hrs,# ylim = c(0,13),
+       xlab="", ylab = "", pch = 19,
+       cex.lab = ax_size, cex.axis = ax_size)
+  mtext("light (hrs)", 2, 2, cex = ax_size)
+  mtext("distance (km)", 1, 2, cex = ax_size)
   
 dev.off()
+
+
+# linear regressions for nutrient concentrations
+dev.off()
+covars <- dat %>%
+  select(Time, streamSection,distance_m, slope, Latitude, Longitude, 
+         width_m, depth_m, velocity_ms, temp_C,
+         DO_pctsat, DO_mgL, Cl.mgL, SO4.mgL, NO3.N.mgL, NH4.N.mgL, Habitat)
+
+ggplotRegression <- function (fit, xlab = "DO (% sat)", ylab) {
+  
+  require(ggplot2)
+  
+  ggplot(fit$model, 
+         aes_string(x = names(fit$model)[2], y = names(fit$model)[1])) + 
+    geom_point() +
+    stat_smooth(method = "lm", col = "red") +
+    ggtitle(paste("Intercept =", signif(fit$coef[[1]],3 ),
+                       ", Slope =", signif(fit$coef[[2]], 3),
+                       ", P =", round(signif(summary(fit)$coef[2,4], 3), 4),
+                       ", R2 = ",signif(summary(fit)$adj.r.squared, 3))) +
+    xlab(xlab) +
+    ylab(ylab) +
+    theme_classic()+
+    theme(plot.title = element_text(face = "plain", size = 8)) 
+}
 
 covars <- covars[covars$distance_m<wwtp$distance_m,]
 covars$NH4.N.ugL<- covars$NH4.N.mgL*1000
@@ -84,12 +222,29 @@ covars$NO3.N.ugL<- covars$NO3.N.mgL*1000
 
 no3 <- lm(NO3.N.ugL~DO_pctsat, data=covars)
 nh4 <- lm(NH4.N.ugL~DO_pctsat, data=covars)
-
 summary(no3)
 summary(nh4)
 
+
+ggplot(covars, aes(x = DO_pctsat, y = NO3.N.ugL)) +
+  geom_point() +
+  stat_smooth(method = "lm")
+
+pno3 <- ggplotRegression(no3, ylab = "NO3-N (ug/L)")
+pnh4 <- ggplotRegression(nh4, ylab = "NH4-N (ug/L)")
+
+library(ggpubr)
+png("figures/nutrient_linear_regression.png", 
+    width = 7, height = 4, units = "in", res = 300)
+  plots <- ggarrange(pno3, pnh4, ncol = 2)
+  annotate_figure(plots, 
+                top = text_grob("Linear regression for spatial nutrient patterns"))
+
+dev.off()
+
+
 confint(no3)
-plot(covars$DO_pctsat- covars$DOpred)
+plot(covars$DO_pctsat, covars$NO3.N.ugL)
 points(covars$DO_pctsat- covars$DOpred1, col=2)
 
 plot(dat$DO_pctsat, dat$NH4.N.mgL/dat$NO3.N.mgL, ylim = c(0,0.2), pch = 20,

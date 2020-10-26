@@ -60,51 +60,102 @@ seasonal.lowslope <- dat_piedmont[dat_piedmont$slope<slope.25,] %>%
             n_hypox =length(which(DO_persat < .5))/length(month)*100)
 
 
-png("figures/WQP_DO_seasonal.png", width=5, height=4, units="in", res=300)
-
-par(mar = c(3,4,1,4), oma = c(0,0,3,0))
-
-boxplot(DO_persat*100 ~month, data=dat_piedmont, ylim = c(0,150), 
-        outline=FALSE, xlab = "", ylab = "", cex.axis=.8)
-mtext("DO (% sat)", side=2, line=-2, outer=T, adj=.55)
-mtext("n=145175",side=3, line=-1.6, adj=.9)
-mtext("1966-2020", side=3, line=-1.6, adj=.1)
-par(new = T)
-
-
-plot(seasonal$month, rep(-1000,12), ylim = c(0,25), axes=F, xlab="", ylab="")
-polygon(c(seq(1,12),rev(seq(1,12))), 
-        c(seasonal.lowslope$n_hypox[1:12], rep(0,12)), 
-        col = alpha("black", .2), border=F)
-polygon(c(seq(1,12),rev(seq(1,12))), 
-        c(seasonal.highslope$n_hypox[1:12], rep(0,12)), 
-        col = alpha("black", .4), border=F)
-axis(4, cex.axis=.8)
-mtext("Pr(DO % sat < 50)", side=4, line=-2, outer=T, adj=.55)
-par(new=T, oma=c(0,0,0,0))
-
-legend("top", legend=c(paste("Lower 25% of slope\n     (<", 
-                             round(slope.25*1000, 1),"m/km)"),
-                       paste("Upper 25% of slope\n     (>",
-                             round(slope.75*1000, 1),"m/km)")), 
-       cex=.8, bty="n",ncol=2, xpd=NA,
-       fill=c(alpha("black",.2),alpha("black",.6)),
-       border=c(NA,NA))
+png("figures/WQP_DO_seasonal.png", width=4, height=3.5, units="in", res=300)
+  
+  par(mar = c(3,4,1,4), oma = c(0,0,3,0))
+  
+  boxplot(DO_persat*100 ~month, data=dat_piedmont, ylim = c(0,150), 
+          outline=FALSE, xlab = "", ylab = "", cex.axis=.8)
+  mtext("DO (% sat)", side=2, line=-2, outer=T, adj=.55)
+  mtext("n=145175",side=3, line=-1.6, adj=.9)
+  mtext("1966-2020", side=3, line=-1.6, adj=.1)
+  par(new = T)
+  
+  
+  plot(seasonal$month, rep(-1000,12), ylim = c(0,25), axes=F, xlab="", ylab="")
+  polygon(c(seq(1,12),rev(seq(1,12))), 
+          c(seasonal.lowslope$n_hypox[1:12], rep(0,12)), 
+          col = alpha("black", .2), border=F)
+  polygon(c(seq(1,12),rev(seq(1,12))), 
+          c(seasonal.highslope$n_hypox[1:12], rep(0,12)), 
+          col = alpha("black", .4), border=F)
+  axis(4, cex.axis=.8)
+  mtext("Pr(DO % sat < 50)", side=4, line=-2, outer=T, adj=.55)
+  par(new=T, oma=c(0,0,0,0))
+  
+  legend("top", legend=c(paste("Lower 25% of slope\n     (<", 
+                               round(slope.25*1000, 1),"m/km)"),
+                         paste("Upper 25% of slope\n     (>",
+                               round(slope.75*1000, 1),"m/km)")), 
+         cex=.8, bty="n",ncol=2, xpd=NA,
+         fill=c(alpha("black",.2),alpha("black",.6)),
+         border=c(NA,NA))
 
 dev.off()
 #############################################################
 #quantile regression on lower 95% of slope data
-maxslope <- quantile(dat_piedmont$slope, .95, na.rm=T)
+maxslope <- quantile(1000*dat_piedmont$slope, .95, na.rm=T)
 
+  dd <- density(dat_piedmont$slope*1000, na.rm = T, bw = .4)
+png("figures/SI_wqp_slopes_distribution.png", width = 3.5, height = 4,
+    units = "in", res = 300)  
+  plot(dd, xlab='', ylab = "", main='')
+  ddo = order(dd$x)
+  xdens = dd$x[ddo]
+  ydens = dd$y[ddo]
+  xdens_lt = xdens[xdens <= maxslope]
+  ydens_lt = ydens[xdens <= maxslope]
+  polygon(c(xdens_lt, rev(xdens_lt)), c(ydens_lt, rep(0, length(ydens_lt))),
+          col='lightgreen', border='black')
+  abline(v=maxslope, lty=3)
+  abline(h=0)
+  text(x = maxslope, y = 0.25, 
+       labels = "  95% \n  quantile \n  8.6 m/km", 
+       adj = c(0,1), cex = .8 )
+  legend('topright', legend='data used for \nlinear regression', 
+         bty='n', cex=.8, 
+         fill = "lightgreen", border = NA)
+  mtext("slope (m/km)", side = 1, line = 2)
+  mtext("Density", side = 2, line = 2)
+  mtext("Distribution of WQP slopes", side = 3, line = .5, cex = 1.1)
+  
+dev.off()  
+  
 dat_piedmont$hypox <- 0
 dat_piedmont$hypox[dat_piedmont$DO_persat<.5]<-1
 dat_piedmont$hypox[is.na(dat_piedmont$DO_persat)]<-NA
 
-plot(dat_piedmont$slope, dat_piedmont$DO_persat, xlim = c(0,maxslope))
-tmp <- dat_piedmont[dat_piedmont$slope<maxslope,]
+
+plot(dat_piedmont$slope*1000, dat_piedmont$DO_persat, xlim = c(0,maxslope))
+tmp <- dat_piedmont[dat_piedmont$slope * 1000 < maxslope,]
 tmp$slope <- tmp$slope*1000
 tmp$DO_persat <- tmp$DO_persat*100
-mm<- glm(DO_persat~slope,data=tmp )
+mm<- lm(DO_persat~slope,data=tmp )
+tmp %>%
+  filter(!is.na(slope)) %>%
+  nrow()
+ggplotRegression <- function (fit, xlab = "DO (% sat)", ylab) {
+  
+  require(ggplot2)
+  
+  ggplot(fit$model, 
+         aes_string(x = names(fit$model)[2], y = names(fit$model)[1])) + 
+    geom_point(size = .7) +
+    stat_smooth(method = "lm", col = "red") +
+    ggtitle(paste("Intercept =",signif(fit$coef[[1]],3 ),
+                  ", Slope =",signif(fit$coef[[2]], 3),
+                  "\nP =",round(signif(summary(fit)$coef[2,4], 3), 4), 
+                  ", n = 137,682")) +
+    xlab(xlab) +
+    ylab(ylab) +
+    theme_classic()+
+    theme(plot.title = element_text(face = "plain", size = 8, hjust = 0.5)) 
+}
+png("figures/SI_wqp_lm.png", width = 3, height = 3.5,
+    units = "in", res = 300)  
+  ggplotRegression(mm, xlab = "slope (m/km)", ylab = "DO (% sat)")
+
+dev.off()
 
 confint(mm)
 summary(mm)
